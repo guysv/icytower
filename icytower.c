@@ -1,5 +1,6 @@
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_image.h>
+#include <allegro5/allegro_primitives.h>
 #include <allegro5/allegro_font.h>
 #include <allegro5/allegro_audio.h>
 #include <allegro5/allegro_acodec.h>
@@ -14,7 +15,28 @@
 #include "floor_types.h"
 #include "game.h"
 #include "fullscreen.h"
+#include "highscores.h"
 
+static char initials_buf[4];
+static int initials_cursor;
+static unsigned initials_board_mask;
+
+static unsigned leader_board_mask(void)
+{
+	return highscores_get_board_mask((unsigned)(it_state.floor * 10
+					       + it_state.score),
+			(unsigned)it_state.floor, (unsigned)it_state.combo);
+}
+
+static void initials_adjust_letter(char *c, int delta)
+{
+	int i = *c - 'A';
+
+	i = (i + delta) % 26;
+	if (i < 0)
+		i += 26;
+	*c = (char)(i + 'A');
+}
 bool initialize(void) {
 	if (!al_init()) {
 		printf("Failed to initialize the Allegro system\n");
@@ -22,6 +44,10 @@ bool initialize(void) {
 	}
 	if (!al_init_image_addon()) {
 		printf("Failed to initialize the image i/o addon\n");
+		return false;
+	}
+	if (!al_init_primitives_addon()) {
+		printf("Failed to initialize the primitives addon\n");
 		return false;
 	}
 	if (!al_init_font_addon()) {
@@ -97,6 +123,7 @@ int main() {
 		goto cleanup;
 
 	options_load();
+	highscores_load();
 
 	al_set_new_display_flags(ALLEGRO_WINDOWED);
 	display = al_create_display(640, 480);
@@ -269,11 +296,90 @@ int main() {
 				}
 				break;
 			case GAMEOVER:
-				if (event.keyboard.keycode == ALLEGRO_KEY_ESCAPE) {
+				switch (event.keyboard.keycode) {
+				case ALLEGRO_KEY_ESCAPE:
 					al_play_sample(sample_tryagain, volume_sfx / 10.0,
 							0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
 					game_state = TITLE;
 					main_menu();
+					break;
+				case ALLEGRO_KEY_ENTER:
+				case ALLEGRO_KEY_SPACE:
+					initials_board_mask = leader_board_mask();
+					if (initials_board_mask) {
+						options_normalize_player_initials();
+						memcpy(initials_buf, player_initials, 4);
+						initials_cursor = 0;
+						game_state = ENTER_INITIALS;
+					} else {
+						al_play_sample(sample_tryagain,
+								volume_sfx / 10.0,
+								0, 1,
+								ALLEGRO_PLAYMODE_ONCE,
+								NULL);
+						game_state = TITLE;
+						main_menu();
+					}
+					break;
+				}
+				break;
+			case ENTER_INITIALS:
+				switch (event.keyboard.keycode) {
+				case ALLEGRO_KEY_UP:
+					al_play_sample(sample_menu_change,
+							volume_sfx / 10.0,
+							0, 1, ALLEGRO_PLAYMODE_ONCE,
+							NULL);
+					initials_adjust_letter(
+							&initials_buf[initials_cursor],
+							1);
+					break;
+				case ALLEGRO_KEY_DOWN:
+					al_play_sample(sample_menu_change,
+							volume_sfx / 10.0,
+							0, 1, ALLEGRO_PLAYMODE_ONCE,
+							NULL);
+					initials_adjust_letter(
+							&initials_buf[initials_cursor],
+							-1);
+					break;
+				case ALLEGRO_KEY_LEFT:
+					al_play_sample(sample_menu_change,
+							volume_sfx / 10.0,
+							0, 1, ALLEGRO_PLAYMODE_ONCE,
+							NULL);
+					initials_cursor = (initials_cursor + 2) % 3;
+					break;
+				case ALLEGRO_KEY_RIGHT:
+					al_play_sample(sample_menu_change,
+							volume_sfx / 10.0,
+							0, 1, ALLEGRO_PLAYMODE_ONCE,
+							NULL);
+					initials_cursor = (initials_cursor + 1) % 3;
+					break;
+				case ALLEGRO_KEY_ENTER:
+				case ALLEGRO_KEY_SPACE:
+					highscores_submit(initials_buf,
+							(unsigned)it_state.floor,
+							(unsigned)(it_state.floor * 10
+									+ it_state.score),
+							(unsigned)it_state.combo);
+					memcpy(player_initials, initials_buf, 4);
+					options_normalize_player_initials();
+					options_save();
+					al_play_sample(sample_menu_change,
+							volume_sfx / 10.0,
+							0, 1, ALLEGRO_PLAYMODE_ONCE,
+							NULL);
+					game_state = TITLE;
+					main_menu();
+					break;
+				case ALLEGRO_KEY_ESCAPE:
+					al_play_sample(sample_tryagain, volume_sfx / 10.0,
+							0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+					game_state = TITLE;
+					main_menu();
+					break;
 				}
 				break;
 			case EXIT:
@@ -316,6 +422,10 @@ int main() {
 			case GAMEOVER:
 				draw_gameover();
 				break;
+			case ENTER_INITIALS:
+				draw_enter_initials(initials_buf, initials_cursor,
+						initials_board_mask);
+				break;
 			}
 			al_flip_display();
 			redraw = false;
@@ -324,6 +434,7 @@ int main() {
 
 cleanup:
 	options_save();
+	highscores_save();
 
 	sfx_destroy_audio_streams_and_samples();
 	gfx_destroy_fonts();

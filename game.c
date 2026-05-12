@@ -1,5 +1,8 @@
+#include <stdio.h>
+
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_audio.h>
+#include <allegro5/allegro_primitives.h>
 #include <time.h>
 
 #include "game.h"
@@ -9,7 +12,7 @@
 #include "options.h"
 #include "characters.h"
 #include "floor_types.h"
-#include "physics.h"
+#include "highscores.h"
 
 IT_STATE it_state;
 int keys;
@@ -432,7 +435,8 @@ void draw_escape(void) {
 			190, 240, 0, "PRESS ESC TO EXIT");
 }
 
-void draw_gameover(void) {
+void draw_gameover(void)
+{
 	draw_game();
 	al_draw_bitmap(bitmap_gameover, 96, 175, 0);
 	al_draw_text(font_color, al_map_rgb(255, 255, 255),
@@ -450,4 +454,65 @@ void draw_gameover(void) {
 	al_draw_textf(font_color, al_map_rgb(255, 255, 255),
 			500, 355, ALLEGRO_ALIGN_RIGHT,
 			"%u", it_state.combo);
+}
+
+void draw_enter_initials(const char letters[3], int cursor_index,
+		unsigned board_mask)
+{
+	static const char *const titles[HIGHSCORE_LEADER_COUNT] = {
+		"BEST FLOOR",
+		"BEST SCORE",
+		"BEST COMBO",
+	};
+	char cat[112];
+	size_t ci;
+	char buf[2];
+	int bmp_x = 96;
+	int bmp_y = 175;
+	int text_x = bmp_x + al_get_bitmap_width(bitmap_highscore) / 2;
+	int text_y = bmp_y + al_get_bitmap_height(bitmap_highscore) + 6;
+	int leader;
+	bool first = true;
+	int i;
+	const int initials_x = 280;
+
+	draw_game();
+	al_draw_bitmap(bitmap_highscore, bmp_x, bmp_y, 0);
+	cat[0] = '\0';
+	ci = 0;
+	for (leader = 0; leader < (int)HIGHSCORE_LEADER_COUNT;
+			++leader) {
+		size_t avail;
+		int n;
+		HighscoreLeader lb = (HighscoreLeader)leader;
+
+		if (!(board_mask & HIGHSCORE_BOARD_MASK(lb)))
+			continue;
+		if (!first && ci + 2 < sizeof(cat)) {
+			cat[ci++] = ',';
+			cat[ci++] = ' ';
+			cat[ci] = '\0';
+		}
+		first = false;
+		avail = sizeof(cat) - ci;
+		n = snprintf(cat + ci, avail, "%s", titles[leader]);
+		if (n < 0 || (size_t)n >= avail)
+			break;
+		ci += (size_t)n;
+	}
+	if (!first)
+		al_draw_text(font_mono, al_map_rgb(255, 255, 255),
+				text_x, text_y, ALLEGRO_ALIGN_CENTRE, cat);
+
+	buf[1] = '\0';
+	for (i = 0; i < 3; ++i) {
+		int x = initials_x + i * 36;
+
+		buf[0] = letters[i];
+		al_draw_text(font_color, al_map_rgb(255, 255, 255),
+				x, 392, 0, buf);
+		if (i == cursor_index)
+			al_draw_line(x, 422, x + 22, 422,
+					al_map_rgb(255, 255, 255), 2.0f);
+	}
 }

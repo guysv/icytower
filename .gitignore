@@ -1,2 +1,5 @@
 icytower
 *.o
+.cursor/debug*.log
+.cache/
+compile_commands.json

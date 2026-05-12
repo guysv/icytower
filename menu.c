@@ -1,7 +1,10 @@
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_audio.h>
 #include <allegro5/allegro_font.h>
+#include <stdarg.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <math.h>
 
 #include "menu.h"
 #include "icytower.h"
@@ -11,6 +14,7 @@
 #include "characters.h"
 #include "floor_types.h"
 #include "fullscreen.h"
+#include "highscores.h"
 
 enum {
 	MAIN_MENU, OPTIONS, GAME_OPTIONS, GFX_OPTIONS, SOUND_OPTIONS, CONTROLS
@@ -447,6 +451,164 @@ const char *get_volume_bar(unsigned int n) {
 	return volume_bar;
 }
 
+static ALLEGRO_BITMAP *highscores_clip_scratch;
+
+static void ensure_highscores_clip_scratch(int w, int h)
+{
+	int bw, bh;
+
+	if (highscores_clip_scratch
+			&& al_get_bitmap_width(highscores_clip_scratch) >= w
+			&& al_get_bitmap_height(highscores_clip_scratch) >= h)
+		return;
+	if (highscores_clip_scratch) {
+		al_destroy_bitmap(highscores_clip_scratch);
+		highscores_clip_scratch = NULL;
+	}
+	bw = w + 8;
+	if (bw < 256)
+		bw = 256;
+	bh = h + 4;
+	if (bh < 24)
+		bh = 24;
+	highscores_clip_scratch = al_create_bitmap(bw, bh);
+}
+
+static void draw_highscores_cut_text(ALLEGRO_FONT *f, ALLEGRO_COLOR col,
+		float x, float y, int flags, int clip_y, const char *text)
+{
+	int lh = al_get_font_line_height(f);
+	int tw = al_get_text_width(f, text);
+	int top = (int)y;
+	int bot = top + lh;
+	ALLEGRO_BITMAP *prev;
+	int sy;
+
+	if (bot <= clip_y)
+		return;
+	if (top >= clip_y) {
+		al_draw_text(f, col, x, y, flags, text);
+		return;
+	}
+	sy = clip_y - top;
+	if (sy >= lh)
+		return;
+	ensure_highscores_clip_scratch(tw, lh);
+	if (!highscores_clip_scratch)
+		return;
+	prev = al_get_target_bitmap();
+	al_set_target_bitmap(highscores_clip_scratch);
+	al_clear_to_color(al_map_rgba(0, 0, 0, 0));
+	al_draw_text(f, col, 0, 0, flags, text);
+	al_set_target_bitmap(prev);
+	al_draw_bitmap_region(highscores_clip_scratch, 0, sy, tw, lh - sy, x,
+			y + (float)sy, 0);
+}
+
+static void draw_highscores_cut_textf(ALLEGRO_FONT *f, ALLEGRO_COLOR col,
+		float x, float y, int flags, int clip_y, const char *fmt, ...)
+{
+	char buf[48];
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+	draw_highscores_cut_text(f, col, x, y, flags, clip_y, buf);
+}
+
+static bool highscores_clip_row_vis(int y, int line_h, int clip_top,
+		int clip_bottom)
+{
+	return y + line_h > clip_top && y < clip_bottom;
+}
+
+static void draw_highscores_section(int hx, float yf, int row_h,
+		ALLEGRO_FONT *font_hs, HighscoreLeader lb, const char *subtitle,
+		int cut_y, int clip_bottom)
+{
+	char name[4];
+	unsigned fl, sc, cb;
+	bool used;
+	int row;
+	int iy = (int)yf;
+	int lh = al_get_font_line_height(font_hs);
+	ALLEGRO_COLOR wht = al_map_rgb(255, 255, 255);
+
+	if (highscores_clip_row_vis(iy, lh, cut_y, clip_bottom))
+		draw_highscores_cut_text(font_hs, wht, hx, yf, 0, cut_y, subtitle);
+	yf += row_h;
+	for (row = 0; row < HIGHSCORES_COUNT; ++row) {
+		iy = (int)yf;
+		highscores_get_entry(lb, row, name, &fl, &sc, &cb, &used);
+		if (!highscores_clip_row_vis(iy, lh, cut_y, clip_bottom)) {
+			yf += row_h;
+			continue;
+		}
+		lh = al_get_font_line_height(font_hs);
+		if (used) {
+			unsigned col3 = (lb == HIGHSCORE_LEADER_COMBO) ? cb : sc;
+
+			draw_highscores_cut_text(font_hs, wht, hx, yf, 0, cut_y,
+					name);
+			draw_highscores_cut_textf(font_hs, wht, hx + 72, yf,
+					0, cut_y, "%u", fl);
+			draw_highscores_cut_textf(font_hs, wht, hx + 132, yf,
+					0, cut_y, "%u", col3);
+		} else {
+			draw_highscores_cut_text(font_hs, wht, hx, yf, 0, cut_y,
+					"---");
+			draw_highscores_cut_text(font_hs, wht, hx + 72, yf, 0,
+					cut_y, "0");
+			draw_highscores_cut_text(font_hs, wht, hx + 132, yf, 0,
+					cut_y, "0");
+		}
+		yf += row_h;
+	}
+}
+
+static void draw_menu_highscores(int hx, int hy, int row_h,
+		ALLEGRO_FONT *font_hs, ALLEGRO_FONT *font_hs_colhdr)
+{
+	static const HighscoreLeader lb_order[3] = {
+		HIGHSCORE_LEADER_FLOOR,
+		HIGHSCORE_LEADER_SCORE,
+		HIGHSCORE_LEADER_COMBO,
+	};
+	static const char *const titles[3] = {
+		"BEST FLOOR", "BEST SCORE", "BEST COMBO",
+	};
+	const int clip_top = hy + 42;
+	const int clip_bottom = 472;
+	const int section_gap = 10;
+	const float section_h = (float)(row_h + HIGHSCORES_COUNT * row_h
+			+ section_gap);
+	const float cycle_h = section_h * 3.f;
+	const double scroll_px = fmod(al_get_time() * 28.0, (double)cycle_h);
+	float y0 = (float)clip_top - (float)scroll_px;
+	int dup, s;
+
+	for (dup = 0; dup < 2; ++dup) {
+		float base = y0 + (float)dup * cycle_h;
+
+		for (s = 0; s < 3; ++s) {
+			draw_highscores_section(hx,
+					base + (float)s * section_h, row_h,
+					font_hs, lb_order[s], titles[s],
+					clip_top, clip_bottom);
+		}
+	}
+
+	al_draw_text(font_hs, al_map_rgb(255, 255, 255), hx, hy, 0,
+			"HIGHSCORES");
+	al_draw_text(font_hs_colhdr, al_map_rgb(255, 255, 255),
+			hx, hy + 22, 0, "DUDE");
+	al_draw_text(font_hs_colhdr, al_map_rgb(255, 255, 255),
+			hx + 56, hy + 22, 0, "FLOOR");
+	al_draw_text(font_hs_colhdr, al_map_rgb(255, 255, 255),
+			hx + 128, hy + 22, 0, "SCORE");
+}
+
 void draw_menu(void) {
 	if (fullscreen)
 		al_clear_to_color(al_map_rgb(0, 0, 0));
@@ -465,6 +627,7 @@ void draw_menu(void) {
 				40, 270 + 28 * 3, 0, "OPTIONS");
 		al_draw_text(font_color, al_map_rgb(255, 255, 255),
 				40, 270 + 28 * 4, 0, "EXIT");
+		draw_menu_highscores(400, 268, 18, font_mono, font_native);
 		break;
 	case OPTIONS:
 		al_draw_text(font_color, al_map_rgb(255, 255, 255),

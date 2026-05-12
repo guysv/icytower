@@ -23,6 +23,7 @@ int key_right = ALLEGRO_KEY_RIGHT;
 int key_jump = ALLEGRO_KEY_SPACE;
 int key_pause = ALLEGRO_KEY_P;
 bool rejump = true;
+char player_initials[4] = "AAA";
 
 #define OPTIONS_SECTION "options"
 
@@ -115,6 +116,19 @@ static void load_bool(const ALLEGRO_CONFIG *cfg, const char *key, bool *out)
 		*out = false;
 }
 
+static void load_player_initials(const ALLEGRO_CONFIG *cfg)
+{
+	const char *s = al_get_config_value(cfg, OPTIONS_SECTION,
+			"player_initials");
+
+	if (!s || strlen(s) != 3) {
+		strcpy(player_initials, "AAA");
+		return;
+	}
+	memcpy(player_initials, s, 3);
+	player_initials[3] = '\0';
+}
+
 void options_load(void)
 {
 	char path[PATH_MAX];
@@ -155,6 +169,7 @@ void options_load(void)
 			key_pause = k;
 	}
 	load_bool(cfg, "rejump", &rejump);
+	load_player_initials(cfg);
 
 	al_destroy_config(cfg);
 }
@@ -199,6 +214,8 @@ void options_save(void)
 	snprintf(buf, sizeof(buf), "%d", key_pause);
 	al_set_config_value(cfg, OPTIONS_SECTION, "key_pause", buf);
 	al_set_config_value(cfg, OPTIONS_SECTION, "rejump", rejump ? "1" : "0");
+	al_set_config_value(cfg, OPTIONS_SECTION, "player_initials",
+			player_initials);
 
 	if (!al_save_config_file(path, cfg))
 		fprintf(stderr, "Warning: could not save options to %s\n", path);
@@ -230,4 +247,21 @@ void options_clamp_indices(void)
 		volume_sfx = 10u;
 	if (volume_music > 10u)
 		volume_music = 10u;
+	options_normalize_player_initials();
+}
+
+void options_normalize_player_initials(void)
+{
+	for (unsigned int i = 0; i < 3; ++i) {
+		char c = player_initials[i];
+
+		if (c >= 'a' && c <= 'z')
+			c = (char)(c - 'a' + 'A');
+		if (c < 'A' || c > 'Z') {
+			strcpy(player_initials, "AAA");
+			return;
+		}
+		player_initials[i] = c;
+	}
+	player_initials[3] = '\0';
 }

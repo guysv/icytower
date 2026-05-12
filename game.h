@@ -1,3 +1,7 @@
+#include "physics.h"
+
+extern IT_STATE it_state;
+
 void initialize_game(void);
 
 void press_left(void);
@@ -13,3 +17,5 @@ void draw_game(void);
 void draw_pause(void);
 void draw_escape(void);
 void draw_gameover(void);
+void draw_enter_initials(const char letters[3], int cursor_index,
+		unsigned board_mask);
