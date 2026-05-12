@@ -13,6 +13,7 @@
 #include "characters.h"
 #include "floor_types.h"
 #include "game.h"
+#include "fullscreen.h"
 
 bool initialize(void) {
 	if (!al_init()) {
@@ -95,12 +96,17 @@ int main() {
 	if (!initialize())
 		goto cleanup;
 
+	options_load();
+
 	al_set_new_display_flags(ALLEGRO_WINDOWED);
 	display = al_create_display(640, 480);
 	if (display == NULL) {
 		printf("Failed to create a display\n");
 		goto cleanup;
 	}
+
+	if (fullscreen)
+		enable_fullscreen();
 
 	timer = al_create_timer(1.0 / 50.0);
 	if (timer == NULL) {
@@ -139,6 +145,8 @@ int main() {
 
 	initialize_characters();
 	initialize_floor_types();
+
+	options_clamp_indices();
 
 	initialize_music(audio_stream_bg_beat);
 	initialize_music(audio_stream_disco_dave_bg_dave);
@@ -315,6 +323,8 @@ int main() {
 	}
 
 cleanup:
+	options_save();
+
 	sfx_destroy_audio_streams_and_samples();
 	gfx_destroy_fonts();
 	gfx_destroy_bitmaps();

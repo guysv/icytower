@@ -1,3 +1,6 @@
+#ifndef OPTIONS_H
+#define OPTIONS_H
+
 extern unsigned int character_index;
 extern unsigned int start_floor;
 extern unsigned int eye_candy;
@@ -8,3 +11,9 @@ extern int key_right;
 extern int key_jump;
 extern int key_pause;
 extern bool rejump;
+
+void options_load(void);
+void options_save(void);
+void options_clamp_indices(void);
+
+#endif
