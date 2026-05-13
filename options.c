@@ -15,7 +15,7 @@
 
 unsigned int character_index = 0;
 unsigned int start_floor = 0;
-unsigned int eye_candy = 0;
+unsigned int eye_candy = 2;
 bool fullscreen = false;
 unsigned int volume_sfx = 10, volume_music = 10;
 int key_left = ALLEGRO_KEY_LEFT;

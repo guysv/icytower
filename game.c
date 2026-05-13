@@ -13,6 +13,7 @@
 #include "characters.h"
 #include "floor_types.h"
 #include "highscores.h"
+#include "combo_trail.h"
 
 IT_STATE it_state;
 int keys;
@@ -35,6 +36,7 @@ void initialize_game(void) {
 	keys = 0;
 	animation = ANIMATION_IDLE;
 	animation_frame = 0;
+	combo_trail_init();
 }
 
 void press_left(void) { keys |= KEY_LEFT; }
@@ -53,6 +55,7 @@ void do_tick(void) {
 				volume_sfx / 10.0f, ALLEGRO_PLAYMODE_ONCE);
 		sfx_play_sample(sample_gameover, volume_sfx / 10.0f,
 				ALLEGRO_PLAYMODE_ONCE);
+		combo_trail_kill();
 		game_state = GAMEOVER;
 		return;
 	}
@@ -173,6 +176,7 @@ void do_tick(void) {
 		break;
 	}
 	++animation_frame;
+	combo_trail_tick(&it_state, animation == ANIMATION_ROTATE);
 }
 
 void draw_background(void) {
@@ -406,6 +410,7 @@ void draw_game(void) {
 		al_clear_to_color(al_map_rgb(20, 20, 20));
 	draw_background();
 	draw_floors();
+	combo_trail_draw((unsigned)animation_frame);
 	draw_character();
 	draw_walls();
 	draw_hud();
