@@ -178,6 +178,7 @@ int main() {
 	initialize_music(audio_stream_bg_beat);
 	initialize_music(audio_stream_disco_dave_bg_dave);
 	initialize_music(audio_stream_bg_menu);
+	sfx_apply_music_volume();
 
 	game_state = TITLE;
 	main_menu();

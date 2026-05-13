@@ -1,6 +1,7 @@
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_audio.h>
 
+#include "options.h"
 #include "sfx.h"
 
 ALLEGRO_AUDIO_STREAM *audio_stream_bg_beat;
@@ -160,6 +161,15 @@ bool sfx_load_audio_streams_and_samples(void) {
 destroy:
 	sfx_destroy_audio_streams_and_samples();
 	return false;
+}
+
+void sfx_apply_music_volume(void)
+{
+	float g = volume_music / 10.0f;
+
+	al_set_audio_stream_gain(audio_stream_bg_menu, g);
+	al_set_audio_stream_gain(audio_stream_bg_beat, g);
+	al_set_audio_stream_gain(audio_stream_disco_dave_bg_dave, g);
 }
 
 void sfx_destroy_audio_streams_and_samples(void) {

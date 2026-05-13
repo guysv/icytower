@@ -288,12 +288,7 @@ void menu_left(void) {
 					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
 			if (volume_music > 0)
 				--volume_music;
-			al_set_audio_stream_gain(audio_stream_bg_menu,
-					volume_music / 10.0);
-			al_set_audio_stream_gain(audio_stream_bg_beat,
-					volume_music / 10.0);
-			al_set_audio_stream_gain(audio_stream_disco_dave_bg_dave,
-					volume_music / 10.0);
+			sfx_apply_music_volume();
 			break;
 		}
 		break;
@@ -348,12 +343,7 @@ void menu_right(void) {
 					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
 			if (volume_music < 10)
 				++volume_music;
-			al_set_audio_stream_gain(audio_stream_bg_menu,
-					volume_music / 10.0);
-			al_set_audio_stream_gain(audio_stream_bg_beat,
-					volume_music / 10.0);
-			al_set_audio_stream_gain(audio_stream_disco_dave_bg_dave,
-					volume_music / 10.0);
+			sfx_apply_music_volume();
 			break;
 		}
 		break;

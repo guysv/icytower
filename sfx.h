@@ -45,3 +45,4 @@ extern ALLEGRO_SAMPLE *sample_disco_dave_watchit;
 
 bool sfx_load_audio_streams_and_samples(void);
 void sfx_destroy_audio_streams_and_samples(void);
+void sfx_apply_music_volume(void);

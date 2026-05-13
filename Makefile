@@ -27,7 +27,7 @@ icytower: icytower.o gfx.o sfx.o menu.o options.o characters.o floor_types.o ful
 
 icytower.o: icytower.c icytower.h gfx.h sfx.h menu.h options.h characters.h floor_types.h game.h highscores.h
 gfx.o: gfx.c gfx.h
-sfx.o: sfx.c sfx.h
+sfx.o: sfx.c sfx.h options.h
 menu.o: menu.c menu.h icytower.h gfx.h sfx.h options.h characters.h floor_types.h fullscreen.h highscores.h
 options.o: options.c options.h characters.h floor_types.h
 characters.o: characters.c characters.h gfx.h sfx.h
