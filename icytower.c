@@ -1,8 +1,8 @@
 #include <allegro5/allegro.h>
+#include <allegro5/allegro_audio.h>
 #include <allegro5/allegro_image.h>
 #include <allegro5/allegro_primitives.h>
 #include <allegro5/allegro_font.h>
-#include <allegro5/allegro_audio.h>
 #include <allegro5/allegro_acodec.h>
 #include <stdio.h>
 
@@ -16,6 +16,8 @@
 #include "game.h"
 #include "fullscreen.h"
 #include "highscores.h"
+
+static ALLEGRO_TIMER *game_tick_timer;
 
 static char initials_buf[4];
 static int initials_cursor;
@@ -37,6 +39,18 @@ static void initials_adjust_letter(char *c, int delta)
 		i += 26;
 	*c = (char)(i + 'A');
 }
+void icytower_sync_game_speed(void)
+{
+	double period;
+
+	if (!game_tick_timer)
+		return;
+	period = (1.0 / 50.0) * (double)OPTIONS_BPM_REFERENCE
+			/ (double)option_bpm;
+	al_set_timer_speed(game_tick_timer, period);
+	sfx_apply_playback_speed();
+}
+
 bool initialize(void) {
 	if (!al_init()) {
 		printf("Failed to initialize the Allegro system\n");
@@ -73,38 +87,23 @@ bool initialize(void) {
 	return true;
 }
 
-void initialize_music(ALLEGRO_AUDIO_STREAM *audio_stream) {
-	al_set_audio_stream_playing(audio_stream, false);
-	al_set_audio_stream_playmode(audio_stream, ALLEGRO_PLAYMODE_LOOP);
-	al_attach_audio_stream_to_mixer(audio_stream, al_get_default_mixer());
-}
-
-void play_music(ALLEGRO_AUDIO_STREAM *audio_stream) {
-	al_rewind_audio_stream(audio_stream);
-	al_set_audio_stream_playing(audio_stream, true);
-}
-
-void stop_music(ALLEGRO_AUDIO_STREAM *audio_stream) {
-	al_set_audio_stream_playing(audio_stream, false);
-}
-
 void start_game(void) {
-	stop_music(audio_stream_bg_menu);
-	play_music(characters[character_index].sfx.bgmusic);
+	sfx_bgm_stop_menu();
+	sfx_bgm_play_character(character_index);
 	initialize_game();
 	draw_game();
-	al_play_sample(characters[character_index].sfx.greeting, volume_sfx / 10.0,
-			0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+	sfx_play_sample(characters[character_index].sfx.greeting,
+			volume_sfx / 10.0f, ALLEGRO_PLAYMODE_ONCE);
 }
 
 void pause_game(void) {
-	al_play_sample(characters[character_index].sfx.pause, volume_sfx / 10.0,
-			0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+	sfx_play_sample(characters[character_index].sfx.pause,
+			volume_sfx / 10.0f, ALLEGRO_PLAYMODE_ONCE);
 }
 
 void main_menu(void) {
-	stop_music(characters[character_index].sfx.bgmusic);
-	play_music(audio_stream_bg_menu);
+	sfx_bgm_stop_character(character_index);
+	sfx_bgm_play_menu();
 }
 
 enum GAME_STATE game_state;
@@ -140,6 +139,7 @@ int main() {
 		printf("Failed to create a timer\n");
 		goto cleanup;
 	}
+	game_tick_timer = timer;
 
 	event_queue = al_create_event_queue();
 	if (event_queue == NULL) {
@@ -170,15 +170,15 @@ int main() {
 		goto cleanup;
 	}
 
+	sfx_register_bgm_event_sources(event_queue);
+
 	initialize_characters();
 	initialize_floor_types();
 
 	options_clamp_indices();
 
-	initialize_music(audio_stream_bg_beat);
-	initialize_music(audio_stream_disco_dave_bg_dave);
-	initialize_music(audio_stream_bg_menu);
 	sfx_apply_music_volume();
+	icytower_sync_game_speed();
 
 	game_state = TITLE;
 	main_menu();
@@ -208,6 +208,9 @@ int main() {
 		case ALLEGRO_EVENT_DISPLAY_SWITCH_IN:
 			/* resume the game */
 			paused = false;
+			break;
+		case ALLEGRO_EVENT_AUDIO_STREAM_FRAGMENT:
+			sfx_handle_audio_stream_fragment(&event);
 			break;
 		case ALLEGRO_EVENT_TIMER:
 			switch (game_state) {
@@ -282,8 +285,8 @@ int main() {
 				break;
 			case ESCAPE:
 				if (event.keyboard.keycode == ALLEGRO_KEY_ESCAPE) {
-					al_play_sample(sample_tryagain, volume_sfx / 10.0,
-							0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+					sfx_play_sample(sample_tryagain, volume_sfx / 10.0f,
+							ALLEGRO_PLAYMODE_ONCE);
 					game_state = TITLE;
 					main_menu();
 				} else {
@@ -299,8 +302,8 @@ int main() {
 			case GAMEOVER:
 				switch (event.keyboard.keycode) {
 				case ALLEGRO_KEY_ESCAPE:
-					al_play_sample(sample_tryagain, volume_sfx / 10.0,
-							0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+					sfx_play_sample(sample_tryagain, volume_sfx / 10.0f,
+							ALLEGRO_PLAYMODE_ONCE);
 					game_state = TITLE;
 					main_menu();
 					break;
@@ -313,11 +316,9 @@ int main() {
 						initials_cursor = 0;
 						game_state = ENTER_INITIALS;
 					} else {
-						al_play_sample(sample_tryagain,
-								volume_sfx / 10.0,
-								0, 1,
-								ALLEGRO_PLAYMODE_ONCE,
-								NULL);
+						sfx_play_sample(sample_tryagain,
+								volume_sfx / 10.0f,
+								ALLEGRO_PLAYMODE_ONCE);
 						game_state = TITLE;
 						main_menu();
 					}
@@ -327,35 +328,31 @@ int main() {
 			case ENTER_INITIALS:
 				switch (event.keyboard.keycode) {
 				case ALLEGRO_KEY_UP:
-					al_play_sample(sample_menu_change,
-							volume_sfx / 10.0,
-							0, 1, ALLEGRO_PLAYMODE_ONCE,
-							NULL);
+					sfx_play_sample(sample_menu_change,
+							volume_sfx / 10.0f,
+							ALLEGRO_PLAYMODE_ONCE);
 					initials_adjust_letter(
 							&initials_buf[initials_cursor],
 							1);
 					break;
 				case ALLEGRO_KEY_DOWN:
-					al_play_sample(sample_menu_change,
-							volume_sfx / 10.0,
-							0, 1, ALLEGRO_PLAYMODE_ONCE,
-							NULL);
+					sfx_play_sample(sample_menu_change,
+							volume_sfx / 10.0f,
+							ALLEGRO_PLAYMODE_ONCE);
 					initials_adjust_letter(
 							&initials_buf[initials_cursor],
 							-1);
 					break;
 				case ALLEGRO_KEY_LEFT:
-					al_play_sample(sample_menu_change,
-							volume_sfx / 10.0,
-							0, 1, ALLEGRO_PLAYMODE_ONCE,
-							NULL);
+					sfx_play_sample(sample_menu_change,
+							volume_sfx / 10.0f,
+							ALLEGRO_PLAYMODE_ONCE);
 					initials_cursor = (initials_cursor + 2) % 3;
 					break;
 				case ALLEGRO_KEY_RIGHT:
-					al_play_sample(sample_menu_change,
-							volume_sfx / 10.0,
-							0, 1, ALLEGRO_PLAYMODE_ONCE,
-							NULL);
+					sfx_play_sample(sample_menu_change,
+							volume_sfx / 10.0f,
+							ALLEGRO_PLAYMODE_ONCE);
 					initials_cursor = (initials_cursor + 1) % 3;
 					break;
 				case ALLEGRO_KEY_ENTER:
@@ -368,16 +365,15 @@ int main() {
 					memcpy(player_initials, initials_buf, 4);
 					options_normalize_player_initials();
 					options_save();
-					al_play_sample(sample_menu_change,
-							volume_sfx / 10.0,
-							0, 1, ALLEGRO_PLAYMODE_ONCE,
-							NULL);
+					sfx_play_sample(sample_menu_change,
+							volume_sfx / 10.0f,
+							ALLEGRO_PLAYMODE_ONCE);
 					game_state = TITLE;
 					main_menu();
 					break;
 				case ALLEGRO_KEY_ESCAPE:
-					al_play_sample(sample_tryagain, volume_sfx / 10.0,
-							0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+					sfx_play_sample(sample_tryagain, volume_sfx / 10.0f,
+							ALLEGRO_PLAYMODE_ONCE);
 					game_state = TITLE;
 					main_menu();
 					break;
@@ -443,8 +439,10 @@ cleanup:
 
 	if (event_queue)
 		al_destroy_event_queue(event_queue);
-	if (timer)
+	if (timer) {
 		al_destroy_timer(timer);
+		game_tick_timer = NULL;
+	}
 	if (display)
 		al_destroy_display(display);
 	return 0;

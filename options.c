@@ -24,6 +24,7 @@ int key_jump = ALLEGRO_KEY_SPACE;
 int key_pause = ALLEGRO_KEY_P;
 bool rejump = true;
 char player_initials[4] = "AAA";
+unsigned int option_bpm = OPTIONS_BPM_DEFAULT;
 
 #define OPTIONS_SECTION "options"
 
@@ -235,6 +236,11 @@ void options_save(void)
 
 #endif /* __APPLE__ */
 
+float options_playback_speed(void)
+{
+	return (float)option_bpm / (float)OPTIONS_BPM_REFERENCE;
+}
+
 void options_clamp_indices(void)
 {
 	if (characters_count > 0 && character_index >= characters_count)
@@ -247,6 +253,10 @@ void options_clamp_indices(void)
 		volume_sfx = 10u;
 	if (volume_music > 10u)
 		volume_music = 10u;
+	if (option_bpm < OPTIONS_BPM_MIN)
+		option_bpm = OPTIONS_BPM_MIN;
+	else if (option_bpm > OPTIONS_BPM_MAX)
+		option_bpm = OPTIONS_BPM_MAX;
 	options_normalize_player_initials();
 }
 

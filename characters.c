@@ -36,7 +36,6 @@ void initialize_characters(void) {
 	harold->sfx.edge = sample_harold_edge;
 	harold->sfx.death = sample_harold_falling;
 	harold->sfx.pause = sample_harold_wazup;
-	harold->sfx.bgmusic = audio_stream_bg_beat;
 
 	disco_dave->gfx.idle1 = bitmap_disco_dave_idle1;
 	disco_dave->gfx.idle2 = bitmap_disco_dave_idle2;
@@ -60,5 +59,4 @@ void initialize_characters(void) {
 	disco_dave->sfx.edge = sample_disco_dave_watchit;
 	disco_dave->sfx.death = sample_disco_dave_diggin;
 	disco_dave->sfx.pause = sample_disco_dave_goinon;
-	disco_dave->sfx.bgmusic = audio_stream_disco_dave_bg_dave;
 }

@@ -23,8 +23,8 @@ enum {
 unsigned int menu_bullet = 0;
 
 void menu_up(void) {
-	al_play_sample(sample_menu_choose, volume_sfx / 10.0, 0, 1,
-			ALLEGRO_PLAYMODE_ONCE, NULL);
+	sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
+			ALLEGRO_PLAYMODE_ONCE);
 	if (menu_bullet != 0)
 		menu_bullet -= 1;
 	else switch (menu_page) {
@@ -34,8 +34,10 @@ void menu_up(void) {
 		break;
 	case GAME_OPTIONS:
 	case GFX_OPTIONS:
-	case SOUND_OPTIONS:
 		menu_bullet = 2;
+		break;
+	case SOUND_OPTIONS:
+		menu_bullet = 3;
 		break;
 	case CONTROLS:
 		menu_bullet = 5;
@@ -44,8 +46,8 @@ void menu_up(void) {
 }
 
 void menu_down(void) {
-	al_play_sample(sample_menu_choose, volume_sfx / 10.0, 0, 1,
-			ALLEGRO_PLAYMODE_ONCE, NULL);
+	sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
+			ALLEGRO_PLAYMODE_ONCE);
 	menu_bullet += 1;
 	switch (menu_page) {
 	case MAIN_MENU:
@@ -53,9 +55,13 @@ void menu_down(void) {
 		menu_bullet %= 5;
 		break;
 	case GAME_OPTIONS:
-	case GFX_OPTIONS:
-	case SOUND_OPTIONS:
 		menu_bullet %= 3;
+		break;
+	case GFX_OPTIONS:
+		menu_bullet %= 3;
+		break;
+	case SOUND_OPTIONS:
+		menu_bullet %= 4;
 		break;
 	case CONTROLS:
 		menu_bullet %= 6;
@@ -69,34 +75,34 @@ void menu_enter(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* START GAME */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			game_state = PLAYING;
 			start_game();
 			break;
 		case 1:
 			/* LOAD REPLAY */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			printf("Loading replays is not implemented yet\n");
 			break;
 		case 2:
 			/* INSTRUCTIONS */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			game_state = INSTRUCTIONS;
 			break;
 		case 3:
 			/* OPTIONS */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 0;
 			break;
 		case 4:
 			/* EXIT */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			game_state = EXIT;
 			break;
 		}
@@ -105,36 +111,36 @@ void menu_enter(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* GAME OPTIONS */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = GAME_OPTIONS;
 			menu_bullet = 0;
 			break;
 		case 1:
 			/* GFX OPTIONS */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = GFX_OPTIONS;
 			menu_bullet = 0;
 			break;
 		case 2:
 			/* SOUND OPTIONS */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = SOUND_OPTIONS;
 			menu_bullet = 0;
 			break;
 		case 3:
 			/* CONTROLS */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = CONTROLS;
 			menu_bullet = 0;
 			break;
 		case 4:
 			/* BACK */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = MAIN_MENU;
 			menu_bullet = 3;
 			break;
@@ -150,8 +156,8 @@ void menu_enter(void) {
 			break;
 		case 2:
 			/* BACK */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 0;
 			break;
@@ -164,8 +170,8 @@ void menu_enter(void) {
 			break;
 		case 1:
 			/* FULLSCREEN */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			fullscreen = !fullscreen;
 			if (fullscreen)
 				enable_fullscreen();
@@ -174,8 +180,8 @@ void menu_enter(void) {
 			break;
 		case 2:
 			/* BACK */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 1;
 			break;
@@ -190,9 +196,17 @@ void menu_enter(void) {
 			/* MUSIC */
 			break;
 		case 2:
+			/* BPM — Enter restores default tempo */
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
+			option_bpm = OPTIONS_BPM_DEFAULT;
+			options_clamp_indices();
+			icytower_sync_game_speed();
+			break;
+		case 3:
 			/* BACK */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 2;
 			break;
@@ -202,38 +216,38 @@ void menu_enter(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* LEFT */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			printf("Changing controls is not implemented yet\n");
 			break;
 		case 1:
 			/* RIGHT */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			printf("Changing controls is not implemented yet\n");
 			break;
 		case 2:
 			/* JUMP */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			printf("Changing controls is not implemented yet\n");
 			break;
 		case 3:
 			/* PAUSE */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			printf("Changing controls is not implemented yet\n");
 			break;
 		case 4:
 			/* REJUMP */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			rejump = !rejump;
 			break;
 		case 5:
 			/* BACK */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 3;
 			break;
@@ -248,15 +262,15 @@ void menu_left(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* CHARACTER */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (character_index > 0)
 				--character_index;
 			break;
 		case 1:
 			/* START FLOOR */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (start_floor > 0)
 				--start_floor;
 			break;
@@ -266,8 +280,8 @@ void menu_left(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* EYE CANDY */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (eye_candy > 0)
 				--eye_candy;
 			break;
@@ -277,18 +291,29 @@ void menu_left(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* SOUND */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (volume_sfx > 0)
 				--volume_sfx;
 			break;
 		case 1:
 			/* MUSIC */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (volume_music > 0)
 				--volume_music;
 			sfx_apply_music_volume();
+			break;
+		case 2:
+			/* BPM */
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
+			if (option_bpm > OPTIONS_BPM_MIN + 4)
+				option_bpm -= 5;
+			else if (option_bpm > OPTIONS_BPM_MIN)
+				option_bpm = OPTIONS_BPM_MIN;
+			options_clamp_indices();
+			icytower_sync_game_speed();
 			break;
 		}
 		break;
@@ -303,15 +328,15 @@ void menu_right(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* CHARACTER */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (character_index < characters_count - 1)
 				++character_index;
 			break;
 		case 1:
 			/* START FLOOR */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (start_floor < floor_types_count - 1)
 				++start_floor;
 			break;
@@ -321,8 +346,8 @@ void menu_right(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* EYE CANDY */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (eye_candy < 2)
 				++eye_candy;
 			break;
@@ -332,18 +357,29 @@ void menu_right(void) {
 		switch (menu_bullet) {
 		case 0:
 			/* SOUND */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (volume_sfx < 10)
 				++volume_sfx;
 			break;
 		case 1:
 			/* MUSIC */
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			if (volume_music < 10)
 				++volume_music;
 			sfx_apply_music_volume();
+			break;
+		case 2:
+			/* BPM */
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
+			if (option_bpm + 5 <= OPTIONS_BPM_MAX)
+				option_bpm += 5;
+			else if (option_bpm < OPTIONS_BPM_MAX)
+				option_bpm = OPTIONS_BPM_MAX;
+			options_clamp_indices();
+			icytower_sync_game_speed();
 			break;
 		}
 		break;
@@ -356,77 +392,77 @@ void menu_escape(void) {
 	switch (menu_page) {
 	case MAIN_MENU:
 		if (menu_bullet == 4) {
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			game_state = EXIT;
 		} else {
-			al_play_sample(sample_menu_choose, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_bullet = 4;
 		}
 		break;
 	case OPTIONS:
 		if (menu_bullet == 4) {
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = MAIN_MENU;
 			menu_bullet = 3;
 			break;
 		} else {
-			al_play_sample(sample_menu_choose, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_bullet = 4;
 		}
 		break;
 	case GAME_OPTIONS:
 		if (menu_bullet == 2) {
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 0;
 			break;
 		} else {
-			al_play_sample(sample_menu_choose, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_bullet = 2;
 		}
 		break;
 	case GFX_OPTIONS:
 		if (menu_bullet == 2) {
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 1;
 			break;
 		} else {
-			al_play_sample(sample_menu_choose, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_bullet = 2;
 		}
 		break;
 	case SOUND_OPTIONS:
-		if (menu_bullet == 2) {
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+		if (menu_bullet == 3) {
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 2;
 			break;
 		} else {
-			al_play_sample(sample_menu_choose, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
-			menu_bullet = 2;
+			sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
+			menu_bullet = 3;
 		}
 		break;
 	case CONTROLS:
 		if (menu_bullet == 5) {
-			al_play_sample(sample_menu_change, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = OPTIONS;
 			menu_bullet = 3;
 			break;
 		} else {
-			al_play_sample(sample_menu_choose, volume_sfx / 10.0,
-					0, 1, ALLEGRO_PLAYMODE_ONCE, NULL);
+			sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
 			menu_bullet = 5;
 		}
 		break;
@@ -603,7 +639,8 @@ static void draw_menu_highscores(int hx, int hy, int row_h,
 static void draw_main_menu_heroface(void)
 {
 	ALLEGRO_BITMAP *frame;
-	const double t = al_get_time();
+	/* Match BPM option: faster oscillation / sprite cycling like gameplay. */
+	const double t = al_get_time() * (double)options_playback_speed();
 	const double bob_period = 1.8;
 	const double rot_period = 2.2;
 	const double heroface_frame_period_sec = 0.22 * 4.0;
@@ -711,8 +748,11 @@ void draw_menu(void) {
 		al_draw_textf(font_color, al_map_rgb(255, 255, 255),
 				40, 270 + 28 * 1, 0, "MUSIC:%s",
 				get_volume_bar(volume_music));
+		al_draw_textf(font_color, al_map_rgb(255, 255, 255),
+				40, 270 + 28 * 2, 0, "BPM (SPEED): %u",
+				option_bpm);
 		al_draw_text(font_color, al_map_rgb(255, 255, 255),
-				40, 270 + 28 * 2, 0, "BACK");
+				40, 270 + 28 * 3, 0, "BACK");
 		break;
 	case CONTROLS:
 		al_draw_textf(font_color, al_map_rgb(255, 255, 255),

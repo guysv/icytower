@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 
 #include "highscores.h"
+#include "options.h"
 
 typedef struct {
 	char name[4];
@@ -444,6 +445,9 @@ unsigned highscores_get_board_mask(unsigned total_score, unsigned floor,
 	HighScoreRow t;
 	unsigned m = 0;
 
+	if (option_bpm < OPTIONS_BPM_REFERENCE)
+		return 0;
+
 	memset(&t, 0, sizeof(t));
 	t.used = true;
 	strcpy(t.name, "ZZZ");
@@ -466,6 +470,9 @@ void highscores_submit(const char *initials3, unsigned floor,
 	HighScoreRow new_row;
 	bool changed = false;
 	int i;
+
+	if (option_bpm < OPTIONS_BPM_REFERENCE)
+		return;
 
 	if (!initials3 || strlen(initials3) != 3)
 		return;

@@ -27,7 +27,6 @@ struct character_sfx {
 	ALLEGRO_SAMPLE *edge;
 	ALLEGRO_SAMPLE *death;
 	ALLEGRO_SAMPLE *pause;
-	ALLEGRO_AUDIO_STREAM *bgmusic;
 };
 
 struct character {

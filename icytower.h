@@ -4,3 +4,4 @@ extern enum GAME_STATE {
 } game_state;
 
 void start_game(void);
+void icytower_sync_game_speed(void);
