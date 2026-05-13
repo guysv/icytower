@@ -609,10 +609,54 @@ static void draw_menu_highscores(int hx, int hy, int row_h,
 			hx + 128, hy + 22, 0, "SCORE");
 }
 
+/* Main menu hero head: vertical bob and tilt on different sine periods. */
+static void draw_main_menu_heroface(void)
+{
+	ALLEGRO_BITMAP *frame;
+	const double t = al_get_time();
+	const double bob_period = 1.8;
+	const double rot_period = 2.2;
+	const double heroface_frame_period_sec = 0.22 * 4.0;
+	const float bob_amp = 11.f;
+	const double rot_max = 15.0 * ALLEGRO_PI / 180.0;
+	double bob_phase, rot_phase;
+	float cx, cy, dx, dy;
+	int w, h, fi;
+
+	if (!bitmap_heroface000 || !bitmap_heroface001 || !bitmap_heroface002)
+		return;
+
+	fi = (int)floor(fmod(t / heroface_frame_period_sec, 3.0));
+	if (fi < 0)
+		fi += 3;
+	switch (fi) {
+	case 0:
+		frame = bitmap_heroface000;
+		break;
+	case 1:
+		frame = bitmap_heroface001;
+		break;
+	default:
+		frame = bitmap_heroface002;
+		break;
+	}
+	w = al_get_bitmap_width(frame);
+	h = al_get_bitmap_height(frame);
+	cx = (float)w * 0.5f;
+	cy = (float)h * 0.5f;
+	bob_phase = sin(2.0 * ALLEGRO_PI * t / bob_period);
+	rot_phase = sin(2.0 * ALLEGRO_PI * t / rot_period);
+	dx = 8.f + cx;
+	dy = 268.f + bob_amp * (float)bob_phase - cy;
+	al_draw_rotated_bitmap(frame, cx, cy, dx, dy, rot_max * rot_phase, 0);
+}
+
 void draw_menu(void) {
 	if (fullscreen)
 		al_clear_to_color(al_map_rgb(0, 0, 0));
 	al_draw_bitmap(bitmap_title_bg, 0, 0, 0);
+	if (menu_page == MAIN_MENU)
+		draw_main_menu_heroface();
 	al_draw_bitmap(bitmap_title, 250, 20, 0);
 	al_draw_bitmap(bitmap_menu_bullet, 4, 262 + 28 * menu_bullet, 0);
 	switch (menu_page) {
