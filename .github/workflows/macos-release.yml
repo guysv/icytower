@@ -1,0 +1,47 @@
+name: macOS DMG
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build tools
+        run: brew install allegro pkg-config dylibbundler
+
+      - name: Build icytower (Homebrew Allegro via pkg-config)
+        run: |
+          export PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig"
+          make USE_ALLEGRO_PKG_CONFIG=1 LDFLAGS=-Wl,-headerpad_max_install_names -j "$(sysctl -n hw.activecpu)"
+
+      - name: Create app bundle + DMG
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          ./packaging/macos/make-bundle.sh --dmg --out-dir dist
+
+      - name: Upload to workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: icytower-macos-${{ github.ref_name }}
+          path: dist/*.dmg
+          if-no-files-found: warn
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/IcyTower-${{ github.ref_name }}-macOS.dmg
+          fail_on_unmatched_files: true

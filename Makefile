@@ -1,6 +1,23 @@
-CC	:= gcc
-CFLAGS	:= -Wall
-LDLIBS	:= -lallegro -lallegro_main -lallegro_primitives -lallegro_image -lallegro_font -lallegro_audio -lallegro_acodec -lm
+CC		?= gcc
+CFLAGS		?= -Wall
+LDFLAGS		?=
+PKG_CONFIG	?= pkg-config
+
+# Debian/Ubuntu-style -l*: works when Allegro headers are on the default include path.
+DEFAULT_ALLEG_LIBS := -lallegro -lallegro_main -lallegro_primitives \
+	-lallegro_image -lallegro_font -lallegro_audio -lallegro_acodec -lm
+
+# Homebrew/macOS CI: Allegro headers live outside the default path; pkg-config exposes them.
+# Build with: make USE_ALLEGRO_PKG_CONFIG=1
+ALLEG_PC_MODULES ?= allegro-5 allegro_main-5 allegro_primitives-5 allegro_image-5 \
+	allegro_font-5 allegro_audio-5 allegro_acodec-5
+
+ifeq ($(USE_ALLEGRO_PKG_CONFIG),1)
+CFLAGS	+= $(shell $(PKG_CONFIG) --cflags $(ALLEG_PC_MODULES))
+LDLIBS	:= $(shell $(PKG_CONFIG) --libs $(ALLEG_PC_MODULES)) -lm
+else
+LDLIBS	:= $(DEFAULT_ALLEG_LIBS)
+endif
 
 .PHONY: all clean
 
