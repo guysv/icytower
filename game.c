@@ -68,9 +68,16 @@ void do_tick(void) {
 	}
 
 	if (it_state.floor <= 1000 ? it_state.floor / 50 > prev_floor / 50 :
-			it_state.floor / 500 > prev_floor / 500)
+			it_state.floor / 500 > prev_floor / 500) {
+		int milestone;
+
 		sfx_play_sample(sample_aight, volume_sfx / 10.0f,
 				ALLEGRO_PLAYMODE_ONCE);
+		milestone = it_state.floor <= 1000
+				? (it_state.floor / 50) * 50
+				: (it_state.floor / 500) * 500;
+		combo_trail_milestone_burst(&it_state, milestone);
+	}
 
 	if (prev_combo_timer > 0 && it_state.combo_timer == 0
 			&& it_state.combo_count > 1) {

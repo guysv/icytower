@@ -6,6 +6,7 @@
 void combo_trail_init(void);
 void combo_trail_kill(void);
 void combo_trail_tick(const IT_STATE *its, int rotating_animation);
+void combo_trail_milestone_burst(const IT_STATE *its, int milestone_floor);
 void combo_trail_draw(unsigned animation_frame);
 
 #endif

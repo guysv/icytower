@@ -11,30 +11,49 @@
 
 extern IT_STATE it_state;
 
-#define COMBO_TRAIL_MAX 48
+#define COMBO_TRAIL_MAX 96
 #define SPAWN_EVERY 3
 #define CULL_MARGIN 32
 #define FEET_JITTER 10
-#define STAR_GRAVITY 0.75f
+#define STAR_GRAVITY 0.375f
 #define STAR_SPAWN_SPEED 3.0f
 #define VEL_EPS 1e-4f
 #define SPAWN_SPRAY_DEG 5.0f
+#define MILESTONE_BURST_SPEED 4.25f
+#define MILESTONE_BURST_STRONG_MUL 3.0f
+#define MILESTONE_SPEED_MUL_MIN 1.0f
+#define MILESTONE_SPEED_MUL_MAX 3.0f
+#define MILESTONE_SPAWN_X_MARGIN 16.0f
+#define MILESTONE_SPAWN_Y 476.0f
+#define MILESTONE_ANGLE_MIN -20.0f
+#define MILESTONE_ANGLE_SPAN 40.0f
 
 typedef struct {
 	float x, y, vx, vy;
 	unsigned char phase;
 	bool active;
+	bool combo_owned;
 } ComboTrailStar;
 
 static ComboTrailStar stars[COMBO_TRAIL_MAX];
 static int prev_screen_y;
 
-static void combo_trail_clear(void)
+static void trail_clear_all(void)
 {
 	int i;
 
 	for (i = 0; i < COMBO_TRAIL_MAX; i++)
 		stars[i].active = false;
+}
+
+static void trail_clear_combo(void)
+{
+	int i;
+
+	for (i = 0; i < COMBO_TRAIL_MAX; i++) {
+		if (stars[i].active && stars[i].combo_owned)
+			stars[i].active = false;
+	}
 }
 
 static ALLEGRO_BITMAP *star_bitmap(unsigned ix)
@@ -70,7 +89,7 @@ static int find_free_slot(void)
 	return -1;
 }
 
-static void spawn_one(float x, float y, float vx, float vy)
+static void spawn_one(float x, float y, float vx, float vy, bool combo_owned)
 {
 	int i;
 	ComboTrailStar *s;
@@ -80,6 +99,7 @@ static void spawn_one(float x, float y, float vx, float vy)
 		return;
 	s = &stars[i];
 	s->active = true;
+	s->combo_owned = combo_owned;
 	s->x = x;
 	s->y = y;
 	s->vx = vx;
@@ -116,8 +136,8 @@ static void try_spawn(const IT_STATE *its)
 	s5 = sinf(SPAWN_SPRAY_DEG * ALLEGRO_PI / 180.0f);
 
 	/* +5 deg and -5 deg from base kick velocity */
-	spawn_one(x, y, bx * c5 - by * s5, bx * s5 + by * c5);
-	spawn_one(x, y, bx * c5 + by * s5, -bx * s5 + by * c5);
+	spawn_one(x, y, bx * c5 - by * s5, bx * s5 + by * c5, true);
+	spawn_one(x, y, bx * c5 + by * s5, -bx * s5 + by * c5, true);
 }
 
 static void apply_scroll_gravity_cull(int dy)
@@ -145,13 +165,13 @@ static void apply_scroll_gravity_cull(int dy)
 
 void combo_trail_init(void)
 {
-	combo_trail_clear();
+	trail_clear_all();
 	prev_screen_y = it_state.screen_y;
 }
 
 void combo_trail_kill(void)
 {
-	combo_trail_clear();
+	trail_clear_all();
 }
 
 void combo_trail_tick(const IT_STATE *its, int rotating_animation)
@@ -160,25 +180,63 @@ void combo_trail_tick(const IT_STATE *its, int rotating_animation)
 	static unsigned tick;
 
 	if (eye_candy != 2u) {
-		combo_trail_clear();
-		prev_screen_y = its->screen_y;
-		return;
-	}
-
-	if (its->combo_timer <= 0 || its->combo_count <= 0) {
-		combo_trail_clear();
+		trail_clear_all();
 		prev_screen_y = its->screen_y;
 		return;
 	}
 
 	dy = its->screen_y - prev_screen_y;
 	prev_screen_y = its->screen_y;
-
 	apply_scroll_gravity_cull(dy);
 
-	tick++;
-	if (tick % SPAWN_EVERY == 0 && rotating_animation)
-		try_spawn(its);
+	if (its->combo_timer > 0 && its->combo_count > 0) {
+		tick++;
+		if (tick % SPAWN_EVERY == 0 && rotating_animation)
+			try_spawn(its);
+	} else {
+		trail_clear_combo();
+	}
+}
+
+void combo_trail_milestone_burst(const IT_STATE *its, int milestone_floor)
+{
+	int j, n;
+	float xl, xr, span, sx, ang_deg, ang_rad, speed_base, mul, speed;
+
+	if (eye_candy != 2u || milestone_floor <= 0)
+		return;
+
+	(void)its;
+
+	xl = MILESTONE_SPAWN_X_MARGIN;
+	xr = 640.0f - MILESTONE_SPAWN_X_MARGIN;
+	span = xr - xl;
+	n = (int)(span / 12.0f);
+	if (n < 10)
+		n = 10;
+	if (n > 64)
+		n = 64;
+
+	speed_base = MILESTONE_BURST_SPEED;
+	if (milestone_floor == 50)
+		speed_base *= MILESTONE_BURST_STRONG_MUL;
+
+	for (j = 0; j < n; j++) {
+		float u = ((float)j + (float)rand() / (float)RAND_MAX) / (float)n;
+
+		sx = xl + u * span;
+		mul = MILESTONE_SPEED_MUL_MIN
+				+ ((float)rand() / (float)RAND_MAX)
+					* (MILESTONE_SPEED_MUL_MAX - MILESTONE_SPEED_MUL_MIN);
+		speed = speed_base * mul;
+		ang_deg = MILESTONE_ANGLE_MIN
+				+ ((float)rand() / (float)RAND_MAX) * MILESTONE_ANGLE_SPAN;
+		ang_rad = ang_deg * ALLEGRO_PI / 180.0f;
+		spawn_one(sx, MILESTONE_SPAWN_Y,
+				speed * sinf(ang_rad),
+				-speed * cosf(ang_rad),
+				false);
+	}
 }
 
 void combo_trail_draw(unsigned animation_frame)
