@@ -5,3 +5,4 @@ dist/
 .cursor/debug*.log
 .cache/
 compile_commands.json
+version_gen.h

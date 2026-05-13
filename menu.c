@@ -7,6 +7,7 @@
 #include <math.h>
 
 #include "menu.h"
+#include "version_gen.h"
 #include "icytower.h"
 #include "gfx.h"
 #include "sfx.h"
@@ -678,6 +679,16 @@ static void draw_main_menu_heroface(void)
 	al_draw_rotated_bitmap(frame, cx, cy, dx, dy, rot_max * rot_phase, 0);
 }
 
+static void draw_menu_build_info(void)
+{
+	char buf[288];
+
+	snprintf(buf, sizeof(buf), "%s %s",
+			ICYTOWER_REPO_URL, ICYTOWER_GIT_REV);
+	al_draw_text(font_native, al_map_rgb(200, 200, 200),
+			8, 463, 0, buf);
+}
+
 void draw_menu(void) {
 	if (fullscreen)
 		al_clear_to_color(al_map_rgb(0, 0, 0));
@@ -774,6 +785,7 @@ void draw_menu(void) {
 				40, 270 + 28 * 5, 0, "BACK");
 		break;
 	}
+	draw_menu_build_info();
 }
 
 void draw_instructions(void) {
