@@ -21,9 +21,9 @@
  * u8 peer_count, then peer_count × (uuid, u32 ip host order, u16 udp port host
  * order, name). Additional room parameters may follow in later revisions.
  *
- * SESSION_ADVERT: room_id, spec_version, peer_hint, room_name, port,
- * creator_uuid (16). peer_hint non-zero: senior discovery endpoint for this
- * room_id.
+ * SESSION_ADVERT: room_id, spec_version, room_name, port. Multicast adverts are
+ * emitted only by the senior surviving peer — lexicographically smallest peer
+ * UUID in the roster (local row counts as X.me).
  *
  * This file is intentionally Allegro-free so it can be linked into stand-alone
  * test binaries.
@@ -80,12 +80,8 @@ void     lan_r_bytes(const uint8_t **p, const uint8_t *end, uint8_t *out,
 typedef struct {
 	uint64_t room_id;
 	uint16_t spec_version;
-	/* Non-zero: senior discovery endpoint; zero omitted elsewhere. */
-	uint8_t  peer_hint;
 	char     room_name[LAN_ROOM_LEN];
 	uint16_t port;
-	/* Original session creator; fixed for session lifetime (seniority root). */
-	LanUuid  creator_uuid;
 } LanMsgSessionAdvert;
 
 typedef struct {

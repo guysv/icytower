@@ -1,10 +1,10 @@
 /*
  * Phase 1 LAN: SESSION_ADVERT on discovery (multicast+broadcast) carries room_id,
- * room name, game port, and session creator UUID. HELLO (mesh + liveness),
- * WELCOME, GOODBYE on the game socket maintain mesh roster and liveness. Only
- * the senior-most surviving peer (creator first, then lexicographic uuid)
- * multicasts SESSION_ADVERT with peer_hint=1 and registers mDNS; room_id is
- * stable across handoff.
+ * room name, and game port. HELLO (mesh + liveness), WELCOME, GOODBYE on the
+ * game socket maintain mesh roster and liveness. Only the senior-most surviving
+ * peer (lexicographically smallest peer UUID among the roster + local identity)
+ * multicasts SESSION_ADVERT and registers mDNS; room_id is stable across
+ * handoff.
  */
 
 #include "lan_party.h"
@@ -37,15 +37,12 @@
 typedef struct {
 	bool        ok;
 	uint64_t    room_id;
-	bool        from_primary_host;
 	char        rm[LAN_ROOM_LEN];
 	uint64_t    tms;
-	uint64_t    primary_t_ms;
 	LanAddr     src;
 	uint16_t    gprt;
 	bool        mdns;
 	char        mdns_inst[64];
-	LanUuid     creator_id;
 } Adv;
 
 typedef struct {
@@ -94,7 +91,7 @@ typedef struct {
 	unsigned    jleft;
 	uint64_t    jnext;
 
-	LanUuid     creator_id;
+
 	bool        mdns_senior;
 } Ctx;
 
@@ -150,7 +147,7 @@ static uint64_t rnd64(void)
 
 static void mdns_apply(void *ctx, bool add, const char *instance,
 		uint64_t room_id, const char *room, uint16_t game_port,
-		uint32_t ipv4, uint16_t dport, const LanUuid *creator_uuid)
+		uint32_t ipv4, uint16_t dport)
 {
 	uint64_t now = lan_now_ms();
 	int j, k;
@@ -191,8 +188,6 @@ static void mdns_apply(void *ctx, bool add, const char *instance,
 	}
 	X.adv[j].ok = true;
 	X.adv[j].room_id = room_id;
-	X.adv[j].from_primary_host = true;
-	X.adv[j].primary_t_ms = now;
 	X.adv[j].tms = now;
 	X.adv[j].src.ip = ipv4;
 	X.adv[j].src.port = dport;
@@ -207,10 +202,6 @@ static void mdns_apply(void *ctx, bool add, const char *instance,
 		strncpy(X.adv[j].rm, "?", LAN_ROOM_LEN);
 		X.adv[j].rm[LAN_ROOM_LEN - 1] = '\0';
 	}
-	if (creator_uuid)
-		X.adv[j].creator_id = *creator_uuid;
-	else
-		memset(X.adv[j].creator_id.b, 0, LAN_UUID_BYTES);
 }
 
 static void net_dn(void)
@@ -259,12 +250,6 @@ static int cmp_browse_ord(const void *a, const void *b)
 		return -1;
 	if (ra > rb)
 		return 1;
-	if (X.adv[ia].from_primary_host != X.adv[ib].from_primary_host) {
-		if (X.adv[ia].from_primary_host)
-			return -1;
-		if (X.adv[ib].from_primary_host)
-			return 1;
-	}
 	if (X.adv[ia].tms > X.adv[ib].tms)
 		return -1;
 	if (X.adv[ia].tms < X.adv[ib].tms)
@@ -441,19 +426,7 @@ static LanUuid row_uuid(const Row *r)
 
 static int seniority_cmp(const LanUuid *a, const LanUuid *b)
 {
-	int ac = memcmp(a->b, X.creator_id.b, LAN_UUID_BYTES) == 0;
-	int bc = memcmp(b->b, X.creator_id.b, LAN_UUID_BYTES) == 0;
-
-	if (ac != bc)
-		return ac ? -1 : 1;
 	return memcmp(a->b, b->b, LAN_UUID_BYTES);
-}
-
-static bool creator_id_valid(void)
-{
-	static const unsigned char z[LAN_UUID_BYTES];
-
-	return memcmp(X.creator_id.b, z, LAN_UUID_BYTES) != 0;
 }
 
 static bool i_am_senior_survivor(void)
@@ -461,9 +434,6 @@ static bool i_am_senior_survivor(void)
 	int i;
 	bool any = false;
 	LanUuid best;
-
-	if (!creator_id_valid())
-		return X.host_flag;
 
 	for (i = 0; i < LAN_MAX_PEERS; ++i) {
 		LanUuid id;
@@ -486,7 +456,7 @@ static void sync_senior_mdns(void)
 	if (sen) {
 		if (!X.mdns_senior) {
 			if (lan_mdns_register(X.room, X.room_id, X.gport_bound,
-					X.dport_bound, &X.creator_id))
+					X.dport_bound))
 				X.mdns_senior = true;
 		}
 	} else if (X.mdns_senior) {
@@ -529,8 +499,6 @@ static bool tx_advert(void)
 	memset(&m, 0, sizeof m);
 	m.room_id = X.room_id;
 	m.spec_version = LAN_SPEC_VERSION;
-	m.peer_hint = 1;
-	m.creator_uuid = X.creator_id;
 	m.port = X.gport_bound;
 	strncpy(m.room_name, X.room, LAN_ROOM_LEN);
 	m.room_name[LAN_ROOM_LEN - 1] = '\0';
@@ -651,14 +619,11 @@ static void rx_disc(uint64_t now)
 		{
 			LanMsgSessionAdvert m;
 			int j, k;
-			bool primary;
 
 			if (!lan_dec_session_advert(py, pl, &m))
 				continue;
 			if (m.spec_version != LAN_SPEC_VERSION)
 				continue;
-
-			primary = (m.peer_hint != 0);
 
 			j = -1;
 			for (k = 0; k < ADV_CAP; ++k) {
@@ -685,20 +650,8 @@ static void rx_disc(uint64_t now)
 			X.adv[j].mdns_inst[0] = '\0';
 			strncpy(X.adv[j].rm, m.room_name, LAN_ROOM_LEN);
 			X.adv[j].rm[LAN_ROOM_LEN - 1] = '\0';
-			X.adv[j].creator_id = m.creator_uuid;
-			if (primary) {
-				X.adv[j].from_primary_host = true;
-				X.adv[j].primary_t_ms = now;
-				X.adv[j].src = fr;
-				X.adv[j].gprt = m.port;
-			} else if (!X.adv[j].from_primary_host) {
-				X.adv[j].src = fr;
-				X.adv[j].gprt = m.port;
-			} else if (now > X.adv[j].primary_t_ms + STALE_MS) {
-				X.adv[j].from_primary_host = false;
-				X.adv[j].src = fr;
-				X.adv[j].gprt = m.port;
-			}
+			X.adv[j].src = fr;
+			X.adv[j].gprt = m.port;
 		}
 	}
 }
@@ -781,7 +734,6 @@ static void lobby_create(void)
 	strncpy(X.room, X.tag, LAN_ROOM_LEN);
 	X.room[LAN_ROOM_LEN - 1] = '\0';
 	X.host_flag = true;
-	X.creator_id = X.me;
 	X.mdns_senior = false;
 	roster_local_only();
 	X.hello_rel_mesh = 1;
@@ -801,7 +753,6 @@ static void lobby_join(int ord_idx)
 	strncpy(X.room, a->rm, LAN_ROOM_LEN);
 	X.room[LAN_ROOM_LEN - 1] = '\0';
 	X.host_flag = false;
-	X.creator_id = a->creator_id;
 	X.mdns_senior = false;
 	roster_local_only();
 	X.jpeer.ip = a->src.ip;
@@ -946,7 +897,7 @@ void lan_party_draw(void)
 
 	snprintf(line, sizeof line, "Room %016llx   %s  (%s)",
 			(unsigned long long)X.room_id, X.room,
-			X.host_flag ? "creator" : "joined");
+			X.host_flag ? "hosted" : "joined");
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0, line);
 	y += 28;
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0,
@@ -974,10 +925,6 @@ void lan_party_draw(void)
 				line);
 		y += 22;
 	}
-	y += 8;
-	al_draw_text(font_native, al_map_rgb(160, 160, 160), 12, y, 0,
-			"ESC = room list  (second host: use different discovery "
-			"port)");
 }
 
 void lan_party_key_down(int kc)

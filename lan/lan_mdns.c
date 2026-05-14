@@ -1,6 +1,5 @@
 #include "lan_mdns.h"
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -164,68 +163,8 @@ static int txt_append(uint8_t *buf, int pos, int cap, const char *kv)
 	return pos + (int)n;
 }
 
-static int append_cre_txt(uint8_t *out, int pos, int cap, const LanUuid *u)
-{
-	char kv[8 + LAN_UUID_BYTES * 2 + 8];
-	int i, p;
-
-	if (!u)
-		return pos;
-	p = snprintf(kv, sizeof kv, "cre=");
-	if (p < 0 || p >= (int)sizeof kv - (int)LAN_UUID_BYTES * 2)
-		return pos;
-	for (i = 0; i < LAN_UUID_BYTES; ++i) {
-		int j = snprintf(kv + 4 + i * 2, sizeof kv - (size_t)(4 + i * 2),
-				"%02x", u->b[i]);
-		if (j != 2)
-			return pos;
-	}
-	kv[4 + LAN_UUID_BYTES * 2] = '\0';
-	return txt_append(out, pos, cap, kv);
-}
-
-static bool txt_get_uuid_hex(const unsigned char *txt, uint16_t txt_len,
-		const char *key, LanUuid *out)
-{
-	const unsigned char *p = txt;
-	const unsigned char *end = txt + txt_len;
-	size_t kl = strlen(key);
-
-	while (p < end) {
-		unsigned seg = *p++;
-
-		if (seg == 0 || p + seg > end)
-			break;
-		if (seg > kl && memcmp(p, key, kl) == 0 && p[kl] == '=') {
-			const char *s = (const char *)p + kl + 1;
-			unsigned vl = seg - (unsigned)(kl + 1);
-			unsigned i;
-
-			if (vl != LAN_UUID_BYTES * 2)
-				return false;
-			memset(out, 0, sizeof *out);
-			for (i = 0; i < LAN_UUID_BYTES; ++i) {
-				char hx[3];
-				unsigned v;
-
-				hx[0] = s[i * 2];
-				hx[1] = s[i * 2 + 1];
-				hx[2] = '\0';
-				if (!isxdigit((unsigned char)hx[0])
-						|| !isxdigit((unsigned char)hx[1]))
-					return false;
-				v = (unsigned)strtoul(hx, NULL, 16);
-				out->b[i] = (uint8_t)v;
-			}
-			return true;
-		}
-		p += seg;
-	}
-	return false;
-}
-
 static int build_txt(uint8_t *out, int cap, uint64_t room_id, const char *room,
-		uint16_t dport, const LanUuid *creator)
+		uint16_t dport)
 {
 	char kv[LAN_ROOM_LEN + 48];
 	int p = 0;
@@ -237,7 +176,6 @@ static int build_txt(uint8_t *out, int cap, uint64_t room_id, const char *room,
 	p = txt_append(out, p, cap, kv);
 	snprintf(kv, sizeof kv, "d=%u", (unsigned)dport);
 	p = txt_append(out, p, cap, kv);
-	p = append_cre_txt(out, p, cap, creator);
 	return p;
 }
 
@@ -258,7 +196,7 @@ static void browse_reply(DNSServiceRef sdRef, DNSServiceFlags flags,
 
 	if (!(flags & kDNSServiceFlagsAdd)) {
 		if (g_cb)
-			g_cb(g_ctx, false, service_name, 0, NULL, 0, 0, 0, NULL);
+			g_cb(g_ctx, false, service_name, 0, NULL, 0, 0, 0);
 		return;
 	}
 
@@ -285,7 +223,6 @@ static void resolve_reply(DNSServiceRef sdRef, DNSServiceFlags flags,
 	uint64_t room_id = 0;
 	uint16_t dport = LAN_DEFAULT_PORT;
 	char room[LAN_ROOM_LEN];
-	LanUuid cre;
 	struct addrinfo hints, *ai = NULL;
 	uint32_t ipv4 = 0;
 	struct resolve_ctx *rctx = context;
@@ -294,8 +231,6 @@ static void resolve_reply(DNSServiceRef sdRef, DNSServiceFlags flags,
 	(void)flags;
 	(void)interface_index;
 
-	memset(&cre, 0, sizeof cre);
-
 	if (err != kDNSServiceErr_NoError || !host_target || !g_cb) {
 		goto done;
 	}
@@ -303,7 +238,6 @@ static void resolve_reply(DNSServiceRef sdRef, DNSServiceFlags flags,
 	if (!txt_get_u64(txt, txt_len, "sid", &room_id)) {
 		goto done;
 	}
-	(void)txt_get_uuid_hex(txt, txt_len, "cre", &cre);
 	if (!txt_get_room(txt, txt_len, room, sizeof room)) {
 		room[0] = '\0';
 	}
@@ -324,8 +258,7 @@ static void resolve_reply(DNSServiceRef sdRef, DNSServiceFlags flags,
 			: (full_name ? full_name : host_target);
 
 	if (ipv4 != 0)
-		g_cb(g_ctx, true, inst, room_id, room, ntohs(port), ipv4, dport,
-				&cre);
+		g_cb(g_ctx, true, inst, room_id, room, ntohs(port), ipv4, dport);
 
 done:
 	if (rctx)
@@ -377,7 +310,7 @@ void lan_mdns_browse_stop(void)
 }
 
 bool lan_mdns_register(const char *room, uint64_t room_id, uint16_t game_port,
-		uint16_t discovery_port, const LanUuid *creator_uuid)
+		uint16_t discovery_port)
 {
 	uint8_t txt[256];
 	int tln;
@@ -389,8 +322,7 @@ bool lan_mdns_register(const char *room, uint64_t room_id, uint16_t game_port,
 		room = "";
 
 	memset(txt, 0, sizeof txt);
-	tln = build_txt(txt, sizeof txt, room_id, room, discovery_port,
-			creator_uuid);
+	tln = build_txt(txt, sizeof txt, room_id, room, discovery_port);
 
 	strncpy(name_label, room, sizeof name_label - 1);
 	name_label[sizeof name_label - 1] = '\0';
@@ -442,13 +374,12 @@ void lan_mdns_browse_stop(void)
 }
 
 bool lan_mdns_register(const char *room, uint64_t room_id, uint16_t game_port,
-		uint16_t discovery_port, const LanUuid *creator_uuid)
+		uint16_t discovery_port)
 {
 	(void)room;
 	(void)room_id;
 	(void)game_port;
 	(void)discovery_port;
-	(void)creator_uuid;
 	return false;
 }
 
