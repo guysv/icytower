@@ -24,6 +24,7 @@ typedef struct {
 	FLOOR floor[7];
 	int start, count, pad;
 	unsigned int seed;
+	int floor_gen; /* 0: no new_floor while scrolling (ground only); 1: normal */
 } FLOORS;
 
 typedef struct {
@@ -37,6 +38,8 @@ typedef struct {
 	FLOORS floors;
 } IT_STATE;
 
+void init_empty_state(IT_STATE *its, int rejump);
+void seed_state(IT_STATE *its, unsigned int seed);
 void init_state(IT_STATE *its, int rejump, unsigned int seed);
 int play_frame(IT_STATE *its, int keys);
 void handle_keys(IT_STATE *its, int keys);

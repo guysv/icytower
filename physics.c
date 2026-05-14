@@ -1,6 +1,6 @@
 #include "physics.h"
 
-void init_state(IT_STATE *its, int rejump, unsigned int seed)
+void init_empty_state(IT_STATE *its, int rejump)
 {
 	int i;
 
@@ -23,10 +23,31 @@ void init_state(IT_STATE *its, int rejump, unsigned int seed)
 	its->floors.start = 0;
 	its->floors.count = 0;
 	its->floors.pad = 2;
-	its->floors.seed = seed;
+	its->floors.seed = 0;
+	its->floors.floor_gen = 0;
 
-	for(i=0; i<32; i++)
+	for(i = 0; i < 3; i++)
 		new_floor(&its->floors);
+}
+
+void seed_state(IT_STATE *its, unsigned int seed)
+{
+	int i;
+
+	its->floors.start = 0;
+	its->floors.count = 0;
+	its->floors.pad = 2;
+	its->floors.seed = seed;
+	its->floors.floor_gen = 1;
+
+	for(i = 0; i < 32; i++)
+		new_floor(&its->floors);
+}
+
+void init_state(IT_STATE *its, int rejump, unsigned int seed)
+{
+	init_empty_state(its, rejump);
+	seed_state(its, seed);
 }
 
 int play_frame(IT_STATE *its, int keys)
@@ -90,7 +111,7 @@ int play_frame(IT_STATE *its, int keys)
 		its->y += screen_move;
 		prev_y += screen_move;
 
-		if(its->screen_y%16 < (its->screen_y-screen_move)%16 || screen_move >= 16)
+		if(its->floors.floor_gen && (its->screen_y%16 < (its->screen_y-screen_move)%16 || screen_move >= 16))
 			new_floor(&its->floors);
 	}
 
