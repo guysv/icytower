@@ -1,7 +1,7 @@
 /*
  * Phase 1 LAN: SESSION_ADVERT on discovery (multicast+broadcast) carries room_id,
  * room name, game port, and session creator UUID. HELLO (mesh + liveness),
- * ROSTER, GOODBYE on the game socket maintain mesh roster and liveness. Only
+ * WELCOME, GOODBYE on the game socket maintain mesh roster and liveness. Only
  * the senior-most surviving peer (creator first, then lexicographic uuid)
  * multicasts SESSION_ADVERT with peer_hint=1 and registers mDNS; room_id is
  * stable across handoff.
@@ -83,9 +83,9 @@ typedef struct {
 	LanUuid     rrx_id[LAN_MAX_PEERS];
 	uint16_t    rrx_seq[LAN_MAX_PEERS];
 
-	uint16_t    roster_tx_seq;
+	uint16_t    welcome_tx_seq;
 	uint16_t    hello_rel_mesh;
-	/* HELLO rel_seq: 0 = request ROSTER reply; non-zero = mesh gossip. */
+	/* HELLO rel_seq: 0 = request WELCOME reply; non-zero = mesh gossip. */
 
 	int         cursor;
 	uint64_t    wadv;
@@ -321,7 +321,7 @@ static void roster_local_only(void)
 	X.rw[0].nm[LAN_NAME_LEN - 1] = '\0';
 	X.rw[0].ua.ip = ntohl(inet_addr("127.0.0.1"));
 	X.rw[0].ua.port = X.gport_bound;
-	X.roster_tx_seq = 0;
+	X.welcome_tx_seq = 0;
 	X.hello_rel_mesh = 0;
 }
 
@@ -346,7 +346,7 @@ static void roster_remove(const LanUuid *id)
 }
 
 /*
- * Return true if this (sender, rel_seq) is an exact duplicate ROSTER wire
+ * Return true if this (sender, rel_seq) is an exact duplicate WELCOME wire
  * duplicate; false if new or updated seq for that sender.
  */
 static bool roster_rx_is_dup(const LanUuid *sender, uint16_t seq)
@@ -576,17 +576,17 @@ static bool tx_goodbye(uint64_t room_id, LanAddr to)
 	return z && tx_raw(X.gfd, LAN_MSG_GOODBYE, py, z, to);
 }
 
-static bool tx_roster(LanAddr to)
+static bool tx_welcome(LanAddr to)
 {
-	LanMsgRoster r;
+	LanMsgWelcome r;
 	uint8_t py[LAN_FRAME_MAX_PAYLOAD];
 	size_t z;
 	unsigned n = 0;
 	int i;
 
 	memset(&r, 0, sizeof r);
-	X.roster_tx_seq++;
-	r.rel_seq = X.roster_tx_seq;
+	X.welcome_tx_seq++;
+	r.rel_seq = X.welcome_tx_seq;
 	r.room_id = X.room_id;
 	r.spec_version = LAN_SPEC_VERSION;
 	r.sender = X.me;
@@ -606,8 +606,8 @@ static bool tx_roster(LanAddr to)
 		n++;
 	}
 	r.count = (uint8_t)n;
-	z = lan_enc_roster(py, sizeof py, &r);
-	return z && tx_raw(X.gfd, LAN_MSG_ROSTER, py, z, to);
+	z = lan_enc_welcome(py, sizeof py, &r);
+	return z && tx_raw(X.gfd, LAN_MSG_WELCOME, py, z, to);
 }
 
 static void goodbye_mesh(uint64_t room_id)
@@ -733,14 +733,14 @@ static void rx_game(uint64_t now)
 				continue;
 			roster_add(h.uuid, fr, h.name, now);
 			if (h.rel_seq == 0)
-				(void)tx_roster(fr);
+				(void)tx_welcome(fr);
 			continue;
 		}
-		if (t == LAN_MSG_ROSTER) {
-			LanMsgRoster r;
+		if (t == LAN_MSG_WELCOME) {
+			LanMsgWelcome r;
 			unsigned i;
 
-			if (!lan_dec_roster(py, pl, &r))
+			if (!lan_dec_welcome(py, pl, &r))
 				continue;
 			if (r.spec_version != LAN_SPEC_VERSION
 					|| r.room_id != X.room_id)
@@ -950,7 +950,7 @@ void lan_party_draw(void)
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0, line);
 	y += 28;
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0,
-			"Peers (HELLO / ROSTER mesh):");
+			"Peers (HELLO / WELCOME mesh):");
 	y += 24;
 
 	nt = 0;

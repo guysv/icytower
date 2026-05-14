@@ -1,6 +1,6 @@
 /*
  * Forked localhost test: ITW1 framing + HELLO (spec v2) on game UDP, parent
- * replies with ROSTER as the real lobby would.
+ * replies with WELCOME as the real lobby would.
  *
  * Discovery uses two binds on one host conflict on Darwin; only the game path
  * is exercised via a pipe-published port.
@@ -21,7 +21,7 @@
 
 enum { PIPE_RD, PIPE_WR };
 
-/* Parent / child use fixed UUIDs so the child can assert ROSTER.sender. */
+/* Parent / child use fixed UUIDs so the child can assert WELCOME.sender. */
 static void uuid_parent(LanUuid *u) { memset(u->b, 0x77, LAN_UUID_BYTES); }
 static void uuid_joiner(LanUuid *u) { memset(u->b, 0x33, LAN_UUID_BYTES); }
 
@@ -46,10 +46,10 @@ static bool tx_hi(int gf, LanAddr to, LanUuid const *id)
 	return tn > 0 && lan_net_send(gf, fr, tn, to);
 }
 
-static bool tx_roster_reply(int gf, LanAddr to, const LanUuid *parent_id,
+static bool tx_welcome_reply(int gf, LanAddr to, const LanUuid *parent_id,
 		const LanMsgHello *jh, LanAddr peer_addr)
 {
-	LanMsgRoster r;
+	LanMsgWelcome r;
 	uint8_t py[LAN_FRAME_MAX_PAYLOAD], fr[LAN_FRAME_HEADER_LEN
 		+ LAN_FRAME_MAX_PAYLOAD + LAN_FRAME_CRC_LEN];
 	size_t z, tn;
@@ -66,10 +66,10 @@ static bool tx_roster_reply(int gf, LanAddr to, const LanUuid *parent_id,
 	strncpy(r.peer[0].name, jh->name, LAN_NAME_LEN);
 	r.peer[0].name[LAN_NAME_LEN - 1] = '\0';
 
-	z = lan_enc_roster(py, sizeof py, &r);
+	z = lan_enc_welcome(py, sizeof py, &r);
 	if (!z)
 		return false;
-	tn = lan_frame_encode(fr, sizeof fr, LAN_MSG_ROSTER, py, z);
+	tn = lan_frame_encode(fr, sizeof fr, LAN_MSG_WELCOME, py, z);
 	return tn > 0 && lan_net_send(gf, fr, tn, to);
 }
 
@@ -110,11 +110,11 @@ static int child_main(int rd_pipe)
 		while ((rn = lan_net_recv(gf, b, sizeof b, &fr)) > 0) {
 			if (!lan_frame_decode(b, (size_t)rn, &t, &py, &pl))
 				continue;
-			if (t != LAN_MSG_ROSTER)
+			if (t != LAN_MSG_WELCOME)
 				continue;
 			{
-				LanMsgRoster r;
-				if (!lan_dec_roster(py, pl, &r))
+				LanMsgWelcome r;
+				if (!lan_dec_welcome(py, pl, &r))
 					continue;
 				if (r.room_id != TEST_ROOM_ID
 						|| r.spec_version
@@ -197,7 +197,7 @@ static int parent_main(int wr_pipe)
 			back.ip = fr.ip;
 			back.port = fr.port;
 
-			if (!tx_roster_reply(gf, back, &pu, &h, fr)) {
+			if (!tx_welcome_reply(gf, back, &pu, &h, fr)) {
 				lan_net_close(gf);
 				return 42;
 			}
@@ -248,7 +248,7 @@ int main(void)
 		st_child = 99;
 
 	if (!st_parent && !st_child)
-		puts("[lan_loopback_connect] PASS (HELLO + ROSTER game path)");
+		puts("[lan_loopback_connect] PASS (HELLO + WELCOME game path)");
 	else
 		fprintf(stderr, "[lan_loopback_connect] FAIL parent=%d child=%d\n",
 				st_parent, st_child);

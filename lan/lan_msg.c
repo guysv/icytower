@@ -273,7 +273,7 @@ bool lan_dec_goodbye(const uint8_t *buf, size_t len, LanMsgGoodbye *m)
 	return ok && p == end;
 }
 
-size_t lan_enc_roster(uint8_t *out, size_t cap, const LanMsgRoster *m)
+size_t lan_enc_welcome(uint8_t *out, size_t cap, const LanMsgWelcome *m)
 {
 	uint8_t *p = out;
 	size_t need;
@@ -299,7 +299,7 @@ size_t lan_enc_roster(uint8_t *out, size_t cap, const LanMsgRoster *m)
 	return (size_t)(p - out);
 }
 
-bool lan_dec_roster(const uint8_t *buf, size_t len, LanMsgRoster *m)
+bool lan_dec_welcome(const uint8_t *buf, size_t len, LanMsgWelcome *m)
 {
 	bool ok = true;
 	const uint8_t *p = buf, *end = buf + len;

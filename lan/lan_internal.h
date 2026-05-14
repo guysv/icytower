@@ -45,7 +45,7 @@ typedef enum {
 	LAN_MSG_SESSION_ADVERT      = 0x00,
 	LAN_MSG_HELLO               = 0x01,
 	LAN_MSG_GOODBYE             = 0x02,
-	LAN_MSG_ROSTER              = 0x03
+	LAN_MSG_WELCOME             = 0x03
 } LanMsgType;
 
 typedef enum {
