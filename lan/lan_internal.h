@@ -20,6 +20,9 @@
 #define LAN_PEERS_ENV               "ICYTOWER_LAN_PEERS"
 #define LAN_NAME_ENV                "ICYTOWER_LAN_NAME"
 
+/* Bonjour / DNS-SD (see lan_mdns.c). */
+#define LAN_MDNS_REGTYPE            "_icytower._udp"
+
 #define LAN_MAX_PEERS               8
 #define LAN_NAME_LEN                16
 #define LAN_ROOM_LEN                24

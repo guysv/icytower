@@ -23,6 +23,7 @@
 #include "lan_clock.h"
 #include "lan_internal.h"
 #include "lan_msg.h"
+#include "lan_mdns.h"
 #include "lan_net.h"
 
 #define ADV_CAP      24
@@ -35,6 +36,8 @@ typedef struct {
 	uint64_t    tms;
 	LanAddr     src;
 	uint16_t    gprt;
+	bool        mdns;
+	char        mdns_inst[64];
 } Adv;
 
 typedef struct {
@@ -125,6 +128,65 @@ static uint64_t rnd64(void)
 		v = ((uint64_t)rand() << 32) | (unsigned)rand();
 	}
 	return v ? v : 1ull;
+}
+
+static void mdns_apply(void *ctx, bool add, const char *instance,
+		uint64_t sid, const char *room, uint16_t game_port,
+		uint32_t ipv4, uint16_t dport)
+{
+	uint64_t now = lan_now_ms();
+	int j, k;
+
+	(void)ctx;
+
+	if (!add) {
+		for (k = 0; k < ADV_CAP; ++k) {
+			if (X.adv[k].ok && X.adv[k].mdns
+					&& strcmp(X.adv[k].mdns_inst, instance)
+							== 0) {
+				X.adv[k].ok = false;
+				return;
+			}
+		}
+		return;
+	}
+	if (ipv4 == 0u || game_port == 0u)
+		return;
+
+	j = -1;
+	for (k = 0; k < ADV_CAP; ++k) {
+		if (X.adv[k].ok && X.adv[k].sid == sid) {
+			j = k;
+			break;
+		}
+	}
+	if (j < 0) {
+		for (k = 0; k < ADV_CAP; ++k) {
+			if (!X.adv[k].ok) {
+				j = k;
+				break;
+			}
+		}
+		if (j < 0)
+			return;
+		memset(&X.adv[j], 0, sizeof X.adv[j]);
+	}
+	X.adv[j].ok = true;
+	X.adv[j].sid = sid;
+	X.adv[j].tms = now;
+	X.adv[j].src.ip = ipv4;
+	X.adv[j].src.port = dport;
+	X.adv[j].gprt = game_port;
+	X.adv[j].mdns = true;
+	strncpy(X.adv[j].mdns_inst, instance, sizeof X.adv[j].mdns_inst - 1);
+	X.adv[j].mdns_inst[sizeof X.adv[j].mdns_inst - 1] = '\0';
+	if (room && room[0]) {
+		strncpy(X.adv[j].rm, room, LAN_ROOM_LEN);
+		X.adv[j].rm[LAN_ROOM_LEN - 1] = '\0';
+	} else {
+		strncpy(X.adv[j].rm, "?", LAN_ROOM_LEN);
+		X.adv[j].rm[LAN_ROOM_LEN - 1] = '\0';
+	}
 }
 
 static void net_dn(void)
@@ -433,6 +495,8 @@ static void rx_disc(uint64_t now)
 			X.adv[j].tms = now;
 			X.adv[j].src = fr;
 			X.adv[j].gprt = m.port;
+			X.adv[j].mdns = false;
+			X.adv[j].mdns_inst[0] = '\0';
 			strncpy(X.adv[j].rm, m.room_name, LAN_ROOM_LEN);
 			X.adv[j].rm[LAN_ROOM_LEN - 1] = '\0';
 		}
@@ -497,6 +561,9 @@ static void lobby_create(void)
 	X.jleft = 0;
 	X.ph = LAN_PARTY_PHASE_LOBBY;
 	game_state = LAN_PARTY_LOBBY;
+	lan_mdns_browse_stop();
+	(void)lan_mdns_register(X.room, X.sid, X.gport_bound,
+			X.dport_bound);
 	(void)tx_advert();
 }
 
@@ -517,6 +584,7 @@ static void lobby_join(int ord_idx)
 	X.wadv = X.wgsp = 0;
 	X.ph = LAN_PARTY_PHASE_LOBBY;
 	game_state = LAN_PARTY_LOBBY;
+	lan_mdns_browse_stop();
 }
 
 void lan_party_init(void)
@@ -539,6 +607,8 @@ void lan_party_init(void)
 
 void lan_party_shutdown_all(void)
 {
+	lan_mdns_browse_stop();
+	lan_mdns_unregister();
 	net_dn();
 	memset(X.adv, 0, sizeof X.adv);
 	X.nord = 0;
@@ -567,6 +637,7 @@ void lan_party_enter_browse(void)
 	X.cursor = 0;
 	X.ph = LAN_PARTY_PHASE_BROWSE;
 	game_state = LAN_PARTY_BROWSE;
+	(void)lan_mdns_browse_start(NULL, mdns_apply);
 }
 
 void lan_party_tick(void)
@@ -575,6 +646,8 @@ void lan_party_tick(void)
 
 	if (!X.net)
 		return;
+
+	lan_mdns_poll();
 
 	refresh_browse(now);
 	rx_disc(now);
@@ -622,9 +695,10 @@ void lan_party_draw(void)
 				"Room selection (UP/DOWN, ENTER, ESC = main menu)");
 		y += 28;
 		for (i = 0; i < X.nord; ++i) {
-			snprintf(line, sizeof line, " %c  %s  sid=%016llx",
+			snprintf(line, sizeof line, " %c  %s%s  sid=%016llx",
 					(i == X.cursor) ? '>' : ' ',
 					X.adv[X.ord[i]].rm,
+					X.adv[X.ord[i]].mdns ? " [mDNS]" : "",
 					(unsigned long long)X.adv[X.ord[i]].sid);
 			al_draw_text(font_color, al_map_rgb(255, 255, 255),
 					20, y, 0, line);
@@ -718,12 +792,15 @@ void lan_party_key_down(int kc)
 
 	if (X.ph == LAN_PARTY_PHASE_LOBBY) {
 		if (kc == ALLEGRO_KEY_ESCAPE) {
+			if (X.host_flag)
+				lan_mdns_unregister();
 			X.ph = LAN_PARTY_PHASE_BROWSE;
 			X.sid = 0;
 			X.jleft = 0;
 			memset(X.adv, 0, sizeof X.adv);
 			X.cursor = 0;
 			game_state = LAN_PARTY_BROWSE;
+			(void)lan_mdns_browse_start(NULL, mdns_apply);
 		}
 	}
 }

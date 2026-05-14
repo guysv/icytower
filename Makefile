@@ -24,7 +24,11 @@ LAN_OBJS	:=
 
 ifeq ($(ICYTOWER_LAN),1)
 CFLAGS	+= -DICYTOWER_LAN=1 -Ilan -I.
-LAN_OBJS := lan/lan_party.o lan/lan_net.o lan/lan_clock.o lan/lan_msg.o
+LAN_OBJS := lan/lan_party.o lan/lan_net.o lan/lan_clock.o lan/lan_msg.o lan/lan_mdns.o
+ifeq ($(shell uname -s),Darwin)
+CFLAGS	+= -DICYTOWER_HAVE_MDNS=1
+LDLIBS	+= -ldns_services
+endif
 endif
 
 .PHONY: all clean always_check_git_rev lan-probe probe-test
@@ -61,10 +65,11 @@ highscores.o: highscores.c highscores.h options.h
 combo_trail.o: combo_trail.c combo_trail.h gfx.h options.h physics.h
 
 ifeq ($(ICYTOWER_LAN),1)
-lan/lan_party.o: lan/lan_party.c lan/lan_party.h lan/lan_internal.h lan/lan_msg.h lan/lan_net.h lan/lan_clock.h icytower.h gfx.h
+lan/lan_party.o: lan/lan_party.c lan/lan_party.h lan/lan_internal.h lan/lan_msg.h lan/lan_mdns.h lan/lan_net.h lan/lan_clock.h icytower.h gfx.h
 lan/lan_net.o: lan/lan_net.c lan/lan_net.h lan/lan_internal.h
 lan/lan_clock.o: lan/lan_clock.c lan/lan_clock.h
 lan/lan_msg.o: lan/lan_msg.c lan/lan_msg.h lan/lan_internal.h
+lan/lan_mdns.o: lan/lan_mdns.c lan/lan_mdns.h lan/lan_internal.h
 endif
 
 lan-probe:
