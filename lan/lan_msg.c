@@ -196,12 +196,14 @@ size_t lan_enc_session_advert(uint8_t *out, size_t cap,
 		const LanMsgSessionAdvert *m)
 {
 	uint8_t *p = out;
-	if (cap < 8u + 2u + 1u + LAN_ROOM_LEN + 2u) return 0;
+	if (cap < 8u + 2u + 1u + LAN_ROOM_LEN + 2u + LAN_UUID_BYTES)
+		return 0;
 	lan_w_u64(&p, m->room_id);
 	lan_w_u16(&p, m->spec_version);
 	lan_w_u8 (&p, m->peer_hint);
 	put_fixed_string(&p, m->room_name, LAN_ROOM_LEN);
 	lan_w_u16(&p, m->port);
+	lan_w_bytes(&p, m->creator_uuid.b, LAN_UUID_BYTES);
 	return (size_t)(p - out);
 }
 
@@ -215,6 +217,10 @@ bool lan_dec_session_advert(const uint8_t *buf, size_t len,
 	m->peer_hint    = lan_r_u8 (&p, end);
 	get_fixed_string(&p, end, m->room_name, LAN_ROOM_LEN, &ok);
 	m->port         = lan_r_u16(&p, end, &ok);
+	if ((size_t)(end - p) >= LAN_UUID_BYTES)
+		lan_r_bytes(&p, end, m->creator_uuid.b, LAN_UUID_BYTES, &ok);
+	else
+		memset(m->creator_uuid.b, 0, LAN_UUID_BYTES);
 	return ok;
 }
 
