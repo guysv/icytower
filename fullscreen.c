@@ -2,40 +2,57 @@
 
 #include "fullscreen.h"
 
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-void enable_fullscreen(void) {
-	ALLEGRO_DISPLAY *display = al_get_current_display();
+static void viewport_fit_logical(ALLEGRO_DISPLAY *display)
+{
+	float width = (float)al_get_display_width(display);
+	float height = (float)al_get_display_height(display);
+	float scale = MIN(width / (float)ICYTOWER_LOGICAL_W,
+			height / (float)ICYTOWER_LOGICAL_H);
+	float offset_x = 0.5f * (width - scale * (float)ICYTOWER_LOGICAL_W);
+	float offset_y = 0.5f * (height - scale * (float)ICYTOWER_LOGICAL_H);
 	ALLEGRO_TRANSFORM t;
-	int width, height;
-	float scale, offset_x, offset_y;
 
-	al_set_display_flag(display, ALLEGRO_FULLSCREEN_WINDOW, true);
-	width = al_get_display_width(display);
-	height = al_get_display_height(display);
-
-	scale = MIN(width / 640.0, height / 480.0);
-	offset_x = 0.5 * (width - scale * 640.0);
-	offset_y = 0.5 * (height - scale * 480.0);
 	al_identity_transform(&t);
 	al_scale_transform(&t, scale, scale);
 	al_translate_transform(&t, offset_x, offset_y);
 	al_use_transform(&t);
 
+	al_set_clipping_rectangle(
+			(int)(offset_x + 0.5f),
+			(int)(offset_y + 0.5f),
+			(int)((float)ICYTOWER_LOGICAL_W * scale + 0.5f),
+			(int)((float)ICYTOWER_LOGICAL_H * scale + 0.5f));
+}
+
+void icytower_apply_window_viewport(void)
+{
+	ALLEGRO_DISPLAY *display = al_get_current_display();
+
+	if (display != NULL)
+		viewport_fit_logical(display);
+}
+
+void enable_fullscreen(void) {
+	ALLEGRO_DISPLAY *display = al_get_current_display();
+
+	if (display == NULL)
+		return;
+	al_set_display_flag(display, ALLEGRO_FULLSCREEN_WINDOW, true);
+	viewport_fit_logical(display);
+
 	al_clear_to_color(al_map_rgb(0, 0, 0));
 	al_flip_display();
 	al_clear_to_color(al_map_rgb(0, 0, 0));
-
-	al_set_clipping_rectangle(offset_x + 0.5, offset_y + 0.5,
-			640.0 * scale + 0.5, 480.0 * scale + 0.5);
 }
 
 void disable_fullscreen(void) {
 	ALLEGRO_DISPLAY *display = al_get_current_display();
-	ALLEGRO_TRANSFORM t;
-	al_set_display_flag(display, ALLEGRO_FULLSCREEN_WINDOW, false);
-	al_identity_transform(&t);
-	al_use_transform(&t);
 
-	al_reset_clipping_rectangle();
+	if (display == NULL)
+		return;
+	al_set_display_flag(display, ALLEGRO_FULLSCREEN_WINDOW, false);
+	(void)al_resize_display(display, ICYTOWER_WINDOW_W, ICYTOWER_WINDOW_H);
+	viewport_fit_logical(display);
 }

@@ -16,6 +16,9 @@
 #include "floor_types.h"
 #include "fullscreen.h"
 #include "highscores.h"
+#ifdef ICYTOWER_LAN
+#include "lan/lan_party.h"
+#endif
 
 enum {
 	MAIN_MENU, OPTIONS, GAME_OPTIONS, GFX_OPTIONS, SOUND_OPTIONS, CONTROLS
@@ -31,7 +34,11 @@ void menu_up(void) {
 	else switch (menu_page) {
 	case MAIN_MENU:
 	case OPTIONS:
+#ifdef ICYTOWER_LAN
+		menu_bullet = 5;
+#else
 		menu_bullet = 4;
+#endif
 		break;
 	case GAME_OPTIONS:
 	case GFX_OPTIONS:
@@ -53,7 +60,11 @@ void menu_down(void) {
 	switch (menu_page) {
 	case MAIN_MENU:
 	case OPTIONS:
+#ifdef ICYTOWER_LAN
+		menu_bullet %= 6;
+#else
 		menu_bullet %= 5;
+#endif
 		break;
 	case GAME_OPTIONS:
 		menu_bullet %= 3;
@@ -93,6 +104,26 @@ void menu_enter(void) {
 					ALLEGRO_PLAYMODE_ONCE);
 			game_state = INSTRUCTIONS;
 			break;
+#ifdef ICYTOWER_LAN
+		case 3:
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
+			lan_party_enter_browse();
+			break;
+		case 4:
+			/* OPTIONS */
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
+			menu_page = OPTIONS;
+			menu_bullet = 0;
+			break;
+		case 5:
+			/* EXIT */
+			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
+					ALLEGRO_PLAYMODE_ONCE);
+			game_state = EXIT;
+			break;
+#else
 		case 3:
 			/* OPTIONS */
 			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
@@ -106,6 +137,7 @@ void menu_enter(void) {
 					ALLEGRO_PLAYMODE_ONCE);
 			game_state = EXIT;
 			break;
+#endif
 		}
 		break;
 	case OPTIONS:
@@ -392,14 +424,22 @@ void menu_right(void) {
 void menu_escape(void) {
 	switch (menu_page) {
 	case MAIN_MENU:
+#ifdef ICYTOWER_LAN
+		if (menu_bullet == 5) {
+#else
 		if (menu_bullet == 4) {
+#endif
 			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
 					ALLEGRO_PLAYMODE_ONCE);
 			game_state = EXIT;
 		} else {
 			sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
 					ALLEGRO_PLAYMODE_ONCE);
+#ifdef ICYTOWER_LAN
+			menu_bullet = 5;
+#else
 			menu_bullet = 4;
+#endif
 		}
 		break;
 	case OPTIONS:
@@ -407,7 +447,11 @@ void menu_escape(void) {
 			sfx_play_sample(sample_menu_change, volume_sfx / 10.0f,
 					ALLEGRO_PLAYMODE_ONCE);
 			menu_page = MAIN_MENU;
+#ifdef ICYTOWER_LAN
+			menu_bullet = 4;
+#else
 			menu_bullet = 3;
+#endif
 			break;
 		} else {
 			sfx_play_sample(sample_menu_choose, volume_sfx / 10.0f,
@@ -705,10 +749,19 @@ void draw_menu(void) {
 				40, 270 + 28 * 1, 0, "LOAD REPLAY");
 		al_draw_text(font_color, al_map_rgb(255, 255, 255),
 				40, 270 + 28 * 2, 0, "INSTRUCTIONS");
+#ifdef ICYTOWER_LAN
+		al_draw_text(font_color, al_map_rgb(255, 255, 255),
+				40, 270 + 28 * 3, 0, "LAN PARTY");
+		al_draw_text(font_color, al_map_rgb(255, 255, 255),
+				40, 270 + 28 * 4, 0, "OPTIONS");
+		al_draw_text(font_color, al_map_rgb(255, 255, 255),
+				40, 270 + 28 * 5, 0, "EXIT");
+#else
 		al_draw_text(font_color, al_map_rgb(255, 255, 255),
 				40, 270 + 28 * 3, 0, "OPTIONS");
 		al_draw_text(font_color, al_map_rgb(255, 255, 255),
 				40, 270 + 28 * 4, 0, "EXIT");
+#endif
 		draw_menu_highscores(400, 268, 18, font_mono, font_native);
 		break;
 	case OPTIONS:

@@ -19,7 +19,15 @@ else
 LDLIBS	:= $(DEFAULT_ALLEG_LIBS)
 endif
 
-.PHONY: all clean always_check_git_rev
+ICYTOWER_LAN	?= 0
+LAN_OBJS	:=
+
+ifeq ($(ICYTOWER_LAN),1)
+CFLAGS	+= -DICYTOWER_LAN=1 -Ilan -I.
+LAN_OBJS := lan/lan_party.o lan/lan_net.o lan/lan_clock.o lan/lan_msg.o
+endif
+
+.PHONY: all clean always_check_git_rev lan-probe probe-test
 
 all: icytower
 
@@ -37,7 +45,7 @@ version_gen.h: always_check_git_rev
 
 always_check_git_rev:
 
-icytower: icytower.o gfx.o sfx.o menu.o options.o characters.o floor_types.o fullscreen.o game.o physics.o highscores.o combo_trail.o third_party/sonic/sonic.o
+icytower: icytower.o gfx.o sfx.o menu.o options.o characters.o floor_types.o fullscreen.o game.o physics.o highscores.o combo_trail.o third_party/sonic/sonic.o $(LAN_OBJS)
 
 icytower.o: icytower.c icytower.h gfx.h sfx.h menu.h options.h characters.h floor_types.h game.h highscores.h
 gfx.o: gfx.c gfx.h
@@ -52,5 +60,34 @@ physics.o: physics.c physics.h
 highscores.o: highscores.c highscores.h options.h
 combo_trail.o: combo_trail.c combo_trail.h gfx.h options.h physics.h
 
+ifeq ($(ICYTOWER_LAN),1)
+lan/lan_party.o: lan/lan_party.c lan/lan_party.h lan/lan_internal.h lan/lan_msg.h lan/lan_net.h lan/lan_clock.h icytower.h gfx.h
+lan/lan_net.o: lan/lan_net.c lan/lan_net.h lan/lan_internal.h
+lan/lan_clock.o: lan/lan_clock.c lan/lan_clock.h
+lan/lan_msg.o: lan/lan_msg.c lan/lan_msg.h lan/lan_internal.h
+endif
+
+lan-probe:
+	$(MAKE) -C tools/mac_lan_probe
+
+ifeq ($(ICYTOWER_LAN),1)
+LAN_TEST_DIR := lan/tests/build
+
+probe-test: $(LAN_TEST_DIR)/lan_loopback_connect
+	$(LAN_TEST_DIR)/lan_loopback_connect
+
+$(LAN_TEST_DIR)/lan_loopback_connect: lan/tests/lan_loopback_connect.c lan/lan_msg.c lan/lan_net.c | $(LAN_TEST_DIR)
+	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_loopback_connect.c lan/lan_msg.c lan/lan_net.c
+
+$(LAN_TEST_DIR):
+	mkdir -p $@
+
+menu.o: lan/lan_party.h
+endif
+
 clean:
-	rm -f icytower *.o third_party/sonic/*.o version_gen.h
+	rm -f icytower *.o lan/*.o third_party/sonic/*.o version_gen.h
+ifeq ($(ICYTOWER_LAN),1)
+	rm -rf lan/tests/build
+endif
+	$(MAKE) -C tools/mac_lan_probe clean 2>/dev/null || true

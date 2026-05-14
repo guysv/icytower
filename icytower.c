@@ -17,6 +17,16 @@
 #include "fullscreen.h"
 #include "highscores.h"
 
+#ifdef ICYTOWER_LAN
+#include "lan/lan_party.h"
+
+/*
+ * Hedge against macOS slowing Allegro TIMER events when our window is not key;
+ * the other icytower stays focused and must hear us.
+ */
+#define LAN_PARTY_EVENT_POLL_SEC (1.0 / 24.0)
+#endif
+
 static ALLEGRO_TIMER *game_tick_timer;
 
 static char initials_buf[4];
@@ -117,6 +127,7 @@ int main() {
 	bool game_running;
 	bool paused;
 	bool dont_draw;
+	bool have_event;
 
 	if (!initialize())
 		goto cleanup;
@@ -125,7 +136,7 @@ int main() {
 	highscores_load();
 
 	al_set_new_display_flags(ALLEGRO_WINDOWED);
-	display = al_create_display(640, 480);
+	display = al_create_display(ICYTOWER_WINDOW_W, ICYTOWER_WINDOW_H);
 	if (display == NULL) {
 		printf("Failed to create a display\n");
 		goto cleanup;
@@ -133,6 +144,8 @@ int main() {
 
 	if (fullscreen)
 		enable_fullscreen();
+	else
+		icytower_apply_window_viewport();
 
 	timer = al_create_timer(1.0 / 50.0);
 	if (timer == NULL) {
@@ -180,6 +193,10 @@ int main() {
 	sfx_apply_music_volume();
 	icytower_sync_game_speed();
 
+#ifdef ICYTOWER_LAN
+	lan_party_init();
+#endif
+
 	game_state = TITLE;
 	main_menu();
 
@@ -189,8 +206,31 @@ int main() {
 	dont_draw = false;
 	al_start_timer(timer);
 	while (game_running) {
+#ifdef ICYTOWER_LAN
+		bool lan_party_active =
+				game_state == LAN_PARTY_BROWSE
+				|| game_state == LAN_PARTY_LOBBY;
+
+		if (lan_party_active) {
+			ALLEGRO_TIMEOUT to;
+
+			al_init_timeout(&to, LAN_PARTY_EVENT_POLL_SEC);
+			have_event = al_wait_for_event_until(event_queue, &event,
+					&to);
+			if (!have_event) {
+				lan_party_tick();
+				redraw = true;
+			}
+		} else {
+			al_wait_for_event(event_queue, &event);
+			have_event = true;
+		}
+#else
 		al_wait_for_event(event_queue, &event);
-		switch (event.type) {
+		have_event = true;
+#endif
+		if (have_event) {
+			switch (event.type) {
 		case ALLEGRO_EVENT_DISPLAY_CLOSE:
 			goto cleanup;
 		case ALLEGRO_EVENT_DISPLAY_HALT_DRAWING:
@@ -214,12 +254,24 @@ int main() {
 			break;
 		case ALLEGRO_EVENT_TIMER:
 			switch (game_state) {
+#ifdef ICYTOWER_LAN
+			case LAN_PARTY_BROWSE:
+			case LAN_PARTY_LOBBY:
+				/*
+				 * Keep networking alive when DISPLAY_SWITCH_OUT
+				 * pauses PLAYING gameplay.
+				 */
+				lan_party_tick();
+				break;
+#endif
 			case PLAYING:
 				if (!paused)
 					do_tick();
 				break;
 			case EXIT:
 				game_running = false;
+				break;
+			default:
 				break;
 			}
 			// currently, redraw is coupled to physics tick
@@ -228,6 +280,12 @@ int main() {
 			break;
 		case ALLEGRO_EVENT_KEY_DOWN:
 			switch (game_state) {
+#ifdef ICYTOWER_LAN
+			case LAN_PARTY_BROWSE:
+			case LAN_PARTY_LOBBY:
+				lan_party_key_down(event.keyboard.keycode);
+				break;
+#endif
 			case TITLE:
 				switch (event.keyboard.keycode) {
 				case ALLEGRO_KEY_UP:
@@ -384,7 +442,14 @@ int main() {
 			}
 			break;
 		case ALLEGRO_EVENT_KEY_UP:
+#ifdef ICYTOWER_LAN
+			if (game_state == LAN_PARTY_BROWSE
+					|| game_state == LAN_PARTY_LOBBY)
+				lan_party_key_up(event.keyboard.keycode);
+			else if (game_state == PLAYING) {
+#else
 			if (game_state == PLAYING) {
+#endif
 				if (event.keyboard.keycode == key_left)
 					release_left();
 				else if (event.keyboard.keycode == key_right)
@@ -394,6 +459,7 @@ int main() {
 			}
 			break;
 		}
+		}
 
 		// if there are events in queue, continue to process them
 		if (!al_is_event_queue_empty(event_queue))
@@ -401,6 +467,12 @@ int main() {
 
 		if (redraw && !dont_draw) {
 			switch (game_state) {
+#ifdef ICYTOWER_LAN
+			case LAN_PARTY_BROWSE:
+			case LAN_PARTY_LOBBY:
+				lan_party_draw();
+				break;
+#endif
 			case TITLE:
 				draw_menu();
 				break;
@@ -423,6 +495,8 @@ int main() {
 				draw_enter_initials(initials_buf, initials_cursor,
 						initials_board_mask);
 				break;
+			default:
+				break;
 			}
 			al_flip_display();
 			redraw = false;
@@ -430,6 +504,9 @@ int main() {
 	}
 
 cleanup:
+#ifdef ICYTOWER_LAN
+	lan_party_shutdown_all();
+#endif
 	options_save();
 	highscores_save();
 
