@@ -18,8 +18,8 @@
  * GOODBYE: room_id, spec_version, uuid.
  *
  * WELCOME: u16 rel_seq (per sender, dedupe), room_id, spec_version, sender uuid,
- * u8 peer_count, then peer_count × (uuid, u32 ip host order, u16 udp port host
- * order, name). Additional room parameters may follow in later revisions.
+ * u32 level_seed (host wall time at room creation), u8 peer_count, then
+ * peer_count × (uuid, u32 ip host order, u16 udp port host order, name).
  *
  * SESSION_ADVERT: room_id, spec_version, room_name, port. Multicast adverts are
  * emitted only by the senior surviving peer — lexicographically smallest peer
@@ -112,6 +112,7 @@ typedef struct {
 	uint64_t room_id;
 	uint16_t spec_version;
 	LanUuid  sender;
+	uint32_t level_seed;
 	uint8_t count;
 	LanMsgRosterEntry peer[LAN_MAX_PEERS];
 } LanMsgWelcome;

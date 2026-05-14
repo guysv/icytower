@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LAN_SPEC_VERSION            6u
+#define LAN_SPEC_VERSION            7u
 
 #define LAN_DEFAULT_PORT            51812u /* discovery + legacy default */
 #define LAN_MULTICAST_GROUP         "239.43.137.251"

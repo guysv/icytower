@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "fullscreen.h"
@@ -67,6 +68,7 @@ typedef struct {
 	LanPartyPhase ph;
 
 	bool        host_flag;
+	uint32_t    level_seed;
 	uint64_t    room_id;
 	char        room[LAN_ROOM_LEN];
 
@@ -558,6 +560,7 @@ static bool tx_welcome(LanAddr to)
 	r.room_id = X.room_id;
 	r.spec_version = LAN_SPEC_VERSION;
 	r.sender = X.me;
+	r.level_seed = X.level_seed;
 	for (i = 0; i < LAN_MAX_PEERS; ++i) {
 		LanMsgRosterEntry *e;
 
@@ -700,6 +703,8 @@ static void rx_game(uint64_t now)
 				continue;
 			if (roster_rx_is_dup(&r.sender, r.rel_seq))
 				continue;
+			if (!X.host_flag)
+				X.level_seed = r.level_seed;
 			for (i = 0; i < (unsigned)r.count; ++i) {
 				LanMsgRosterEntry *e = &r.peer[i];
 				LanAddr ua;
@@ -731,6 +736,7 @@ static void rx_game(uint64_t now)
 static void lobby_create(void)
 {
 	X.room_id = rnd64();
+	X.level_seed = (uint32_t)time(NULL);
 	strncpy(X.room, X.tag, LAN_ROOM_LEN);
 	X.room[LAN_ROOM_LEN - 1] = '\0';
 	X.host_flag = true;
@@ -964,6 +970,7 @@ void lan_party_key_down(int kc)
 			X.mdns_senior = false;
 			X.ph = LAN_PARTY_PHASE_BROWSE;
 			X.room_id = 0;
+			X.level_seed = 0;
 			X.jleft = 0;
 			memset(X.adv, 0, sizeof X.adv);
 			X.cursor = 0;

@@ -274,7 +274,7 @@ size_t lan_enc_welcome(uint8_t *out, size_t cap, const LanMsgWelcome *m)
 
 	if (m->count > LAN_MAX_PEERS)
 		return 0;
-	need = 2u + 8u + 2u + LAN_UUID_BYTES + 1u
+	need = 2u + 8u + 2u + LAN_UUID_BYTES + 4u + 1u
 		+ (size_t)m->count * (LAN_UUID_BYTES + 4u + 2u + LAN_NAME_LEN);
 	if (cap < need)
 		return 0;
@@ -282,6 +282,7 @@ size_t lan_enc_welcome(uint8_t *out, size_t cap, const LanMsgWelcome *m)
 	lan_w_u64(&p, m->room_id);
 	lan_w_u16(&p, m->spec_version);
 	lan_w_bytes(&p, m->sender.b, LAN_UUID_BYTES);
+	lan_w_u32(&p, m->level_seed);
 	lan_w_u8(&p, m->count);
 	for (i = 0; i < (unsigned)m->count; ++i) {
 		lan_w_bytes(&p, m->peer[i].uuid.b, LAN_UUID_BYTES);
@@ -303,6 +304,7 @@ bool lan_dec_welcome(const uint8_t *buf, size_t len, LanMsgWelcome *m)
 	m->room_id      = lan_r_u64(&p, end, &ok);
 	m->spec_version = lan_r_u16(&p, end, &ok);
 	lan_r_bytes(&p, end, m->sender.b, LAN_UUID_BYTES, &ok);
+	m->level_seed   = lan_r_u32(&p, end, &ok);
 	m->count        = lan_r_u8(&p, end);
 	if (m->count > LAN_MAX_PEERS) {
 		ok = false;
