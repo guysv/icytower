@@ -1,6 +1,6 @@
 /*
  * Shared constants for LAN Phase 1 (connectivity). Wire format aligns with v1 spec;
- * LAN_SPEC_VERSION bumps when payloads change.
+ * LAN_SPEC_VERSION bumps when payloads change. Game discovery uses a 64-bit room_id.
  */
 
 #ifndef LAN_LAN_INTERNAL_H
@@ -41,21 +41,7 @@
 
 typedef enum {
 	LAN_MSG_SESSION_ADVERT      = 0x00,
-	LAN_MSG_HELLO               = 0x01,
-	LAN_MSG_ROSTER_SNAPSHOT     = 0x02,
-	LAN_MSG_APPEARANCE          = 0x03,
-	LAN_MSG_LOBBY_READY         = 0x04,
-	LAN_MSG_LOBBY_PHASE_NONCE   = 0x05,
-	LAN_MSG_JOIN_NONCE          = 0x06,
-	LAN_MSG_COUNTDOWN_ANCHOR    = 0x07,
-	LAN_MSG_SYNC_KEYS           = 0x08,
-	LAN_MSG_CONTROL_EDGE        = 0x09,
-	LAN_MSG_SCORE_TELEMETRY     = 0x0A,
-	LAN_MSG_ELIMINATE           = 0x0B,
-	LAN_MSG_LEAVE               = 0x0C,
-	/* Brief connectivity check (unreliable); game UDP channel only. */
-	LAN_MSG_PARTY_ACK           = 0x0D,
-	LAN_MSG_REL_ACK             = 0x80
+	LAN_MSG_HELLO               = 0x01
 } LanMsgType;
 
 typedef enum {
@@ -63,8 +49,6 @@ typedef enum {
 	LAN_PARTY_PHASE_BROWSE     = 1,
 	LAN_PARTY_PHASE_LOBBY      = 2
 } LanPartyPhase;
-
-typedef uint8_t LanPlayerId;
 
 typedef struct {
 	uint8_t b[LAN_UUID_BYTES];

@@ -1,5 +1,5 @@
 /*
- * Wire-format encode/decode for all LAN messages.
+ * Wire-format encode/decode for LAN messages.
  *
  * Frame layout (header is 8 bytes, all multi-byte fields little-endian):
  *
@@ -11,9 +11,7 @@
  *   8    L     payload
  *   8+L  4     crc32_le     (IEEE polynomial, computed over header+payload)
  *
- * Reliable messages (HELLO, ROSTER_SNAPSHOT, APPEARANCE, LOBBY_*, JOIN_NONCE,
- * COUNTDOWN_ANCHOR, ELIMINATE, LEAVE) carry a u16 rel_seq as the first two
- * payload bytes; lan_rel handles ordering and ACKs.
+ * HELLO payload starts with u16 rel_seq (reserved for a future reliability layer).
  *
  * This file is intentionally Allegro-free so it can be linked into stand-alone
  * test binaries.
@@ -68,8 +66,9 @@ void     lan_r_bytes(const uint8_t **p, const uint8_t *end, uint8_t *out,
 /* --- Payload structs ----------------------------------------------------- */
 
 typedef struct {
-	uint64_t session_id;
+	uint64_t room_id;
 	uint16_t spec_version;
+	/* Non-zero: primary (creator) discovery endpoint; zero: member/joiner. */
 	uint8_t  peer_hint;
 	char     room_name[LAN_ROOM_LEN];
 	uint16_t port;
@@ -77,7 +76,7 @@ typedef struct {
 
 typedef struct {
 	uint16_t rel_seq;
-	uint64_t session_id;
+	uint64_t room_id;
 	uint16_t spec_version;
 	LanUuid  uuid;
 	uint8_t  skin_id;
@@ -85,135 +84,14 @@ typedef struct {
 	uint32_t feature_flags;
 } LanMsgHello;
 
-typedef struct {
-	uint16_t rel_seq;
-	uint64_t session_id;
-	uint8_t  count;
-	LanUuid  uuids[LAN_MAX_PEERS];
-	uint16_t spec_version;
-} LanMsgRosterSnapshot;
-
-typedef struct {
-	uint16_t rel_seq;
-	LanPlayerId player_id;
-	uint8_t  skin_id;
-	char     name[LAN_NAME_LEN];
-} LanMsgAppearance;
-
-typedef struct {
-	uint16_t rel_seq;
-	LanPlayerId player_id;
-	uint8_t  ready;
-} LanMsgLobbyReady;
-
-typedef struct {
-	uint16_t rel_seq;
-	uint32_t round_id;
-} LanMsgLobbyPhaseNonce;
-
-typedef struct {
-	uint16_t rel_seq;
-	LanPlayerId player_id;
-	uint32_t round_id;
-	uint32_t nonce;
-} LanMsgJoinNonce;
-
-typedef struct {
-	uint16_t rel_seq;
-	LanPlayerId player_id;
-	uint32_t round_id;
-	uint64_t propose_ms;
-} LanMsgCountdownAnchor;
-
-typedef struct {
-	LanPlayerId player_id;
-	uint32_t seq;
-	uint8_t  keybits;
-} LanMsgSyncKeys;
-
-typedef struct {
-	LanPlayerId player_id;
-	uint32_t seq;
-	uint8_t  keybits_after;
-	uint64_t timestamp_ms;
-} LanMsgControlEdge;
-
-typedef struct {
-	LanPlayerId player_id;
-	uint32_t seq_t;
-	int32_t  floor;
-	uint32_t score;
-} LanMsgScoreTelemetry;
-
-typedef struct {
-	uint16_t rel_seq;
-	LanPlayerId player_id;
-	uint32_t round_id;
-	uint8_t  reason; /* LanEliminateReason */
-} LanMsgEliminate;
-
-typedef struct {
-	uint16_t rel_seq;
-	LanPlayerId player_id;
-} LanMsgLeave;
-
-typedef struct {
-	uint16_t acked_seq;
-} LanMsgRelAck;
-
-typedef struct {
-	uint64_t session_id;
-	uint16_t spec_version;
-	LanUuid  uuid;
-} LanMsgPartyAck;
-
 /* --- Payload encoders/decoders ------------------------------------------ */
 
 size_t lan_enc_session_advert(uint8_t *out, size_t cap,
 		const LanMsgSessionAdvert *m);
 size_t lan_enc_hello(uint8_t *out, size_t cap, const LanMsgHello *m);
-size_t lan_enc_roster_snapshot(uint8_t *out, size_t cap,
-		const LanMsgRosterSnapshot *m);
-size_t lan_enc_appearance(uint8_t *out, size_t cap, const LanMsgAppearance *m);
-size_t lan_enc_lobby_ready(uint8_t *out, size_t cap, const LanMsgLobbyReady *m);
-size_t lan_enc_lobby_phase_nonce(uint8_t *out, size_t cap,
-		const LanMsgLobbyPhaseNonce *m);
-size_t lan_enc_join_nonce(uint8_t *out, size_t cap, const LanMsgJoinNonce *m);
-size_t lan_enc_countdown_anchor(uint8_t *out, size_t cap,
-		const LanMsgCountdownAnchor *m);
-size_t lan_enc_sync_keys(uint8_t *out, size_t cap, const LanMsgSyncKeys *m);
-size_t lan_enc_control_edge(uint8_t *out, size_t cap,
-		const LanMsgControlEdge *m);
-size_t lan_enc_score_telemetry(uint8_t *out, size_t cap,
-		const LanMsgScoreTelemetry *m);
-size_t lan_enc_eliminate(uint8_t *out, size_t cap, const LanMsgEliminate *m);
-size_t lan_enc_leave(uint8_t *out, size_t cap, const LanMsgLeave *m);
-size_t lan_enc_rel_ack(uint8_t *out, size_t cap, const LanMsgRelAck *m);
 
 bool lan_dec_session_advert(const uint8_t *buf, size_t len,
 		LanMsgSessionAdvert *m);
 bool lan_dec_hello(const uint8_t *buf, size_t len, LanMsgHello *m);
-bool lan_dec_roster_snapshot(const uint8_t *buf, size_t len,
-		LanMsgRosterSnapshot *m);
-bool lan_dec_appearance(const uint8_t *buf, size_t len, LanMsgAppearance *m);
-bool lan_dec_lobby_ready(const uint8_t *buf, size_t len, LanMsgLobbyReady *m);
-bool lan_dec_lobby_phase_nonce(const uint8_t *buf, size_t len,
-		LanMsgLobbyPhaseNonce *m);
-bool lan_dec_join_nonce(const uint8_t *buf, size_t len, LanMsgJoinNonce *m);
-bool lan_dec_countdown_anchor(const uint8_t *buf, size_t len,
-		LanMsgCountdownAnchor *m);
-bool lan_dec_sync_keys(const uint8_t *buf, size_t len, LanMsgSyncKeys *m);
-bool lan_dec_control_edge(const uint8_t *buf, size_t len, LanMsgControlEdge *m);
-bool lan_dec_score_telemetry(const uint8_t *buf, size_t len,
-		LanMsgScoreTelemetry *m);
-bool lan_dec_eliminate(const uint8_t *buf, size_t len, LanMsgEliminate *m);
-bool lan_dec_leave(const uint8_t *buf, size_t len, LanMsgLeave *m);
-bool lan_dec_rel_ack(const uint8_t *buf, size_t len, LanMsgRelAck *m);
-
-size_t lan_enc_party_ack(uint8_t *out, size_t cap, const LanMsgPartyAck *m);
-bool lan_dec_party_ack(const uint8_t *buf, size_t len, LanMsgPartyAck *m);
-
-/* True if the message type uses reliable delivery (payload begins with u16 seq). */
-bool lan_msg_is_reliable(LanMsgType t);
 
 #endif /* ICYTOWER_LAN_MSG_H */

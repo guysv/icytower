@@ -1,6 +1,8 @@
 /*
- * Phase 1 LAN: SESSION_ADVERT on discovery (multicast+broadcast) +
- * HELLO mesh on the game UDP socket.
+ * Phase 1 LAN: SESSION_ADVERT on discovery (multicast+broadcast) carries room_id,
+ * room name, and game port. HELLO on the game socket carries the same room_id
+ * for roster. Primary (creator) adverts use peer_hint=1 so discovery merges
+ * preserve the host address when joiners also multicast SESSION_ADVERT.
  */
 
 #include "lan_party.h"
@@ -31,7 +33,8 @@
 
 typedef struct {
 	bool        ok;
-	uint64_t    sid;
+	uint64_t    room_id;
+	bool        from_primary_host;
 	char        rm[LAN_ROOM_LEN];
 	uint64_t    tms;
 	LanAddr     src;
@@ -46,8 +49,6 @@ typedef struct {
 	LanUuid     id;
 	LanAddr     ua;
 	char        nm[LAN_NAME_LEN];
-	bool        recv_party_ack;
-	bool        sent_party_ack;
 } Row;
 
 typedef struct {
@@ -63,7 +64,7 @@ typedef struct {
 	LanPartyPhase ph;
 
 	bool        host_flag;
-	uint64_t    sid;
+	uint64_t    room_id;
 	char        room[LAN_ROOM_LEN];
 
 	Adv         adv[ADV_CAP];
@@ -131,7 +132,7 @@ static uint64_t rnd64(void)
 }
 
 static void mdns_apply(void *ctx, bool add, const char *instance,
-		uint64_t sid, const char *room, uint16_t game_port,
+		uint64_t room_id, const char *room, uint16_t game_port,
 		uint32_t ipv4, uint16_t dport)
 {
 	uint64_t now = lan_now_ms();
@@ -155,7 +156,7 @@ static void mdns_apply(void *ctx, bool add, const char *instance,
 
 	j = -1;
 	for (k = 0; k < ADV_CAP; ++k) {
-		if (X.adv[k].ok && X.adv[k].sid == sid) {
+		if (X.adv[k].ok && X.adv[k].room_id == room_id) {
 			j = k;
 			break;
 		}
@@ -172,7 +173,8 @@ static void mdns_apply(void *ctx, bool add, const char *instance,
 		memset(&X.adv[j], 0, sizeof X.adv[j]);
 	}
 	X.adv[j].ok = true;
-	X.adv[j].sid = sid;
+	X.adv[j].room_id = room_id;
+	X.adv[j].from_primary_host = true;
 	X.adv[j].tms = now;
 	X.adv[j].src.ip = ipv4;
 	X.adv[j].src.port = dport;
@@ -224,21 +226,33 @@ static bool net_up(void)
 	return true;
 }
 
-static int cmp_ord(const void *a, const void *b)
+static int cmp_browse_ord(const void *a, const void *b)
 {
 	int ia = *(const int *)a;
 	int ib = *(const int *)b;
-	uint64_t sa = X.adv[ia].sid;
-	uint64_t sb = X.adv[ib].sid;
+	uint64_t ra = X.adv[ia].room_id;
+	uint64_t rb = X.adv[ib].room_id;
 
-	if (sa < sb)
+	if (ra < rb)
 		return -1;
-	return sa > sb ? 1 : 0;
+	if (ra > rb)
+		return 1;
+	if (X.adv[ia].from_primary_host != X.adv[ib].from_primary_host) {
+		if (X.adv[ia].from_primary_host)
+			return -1;
+		if (X.adv[ib].from_primary_host)
+			return 1;
+	}
+	if (X.adv[ia].tms > X.adv[ib].tms)
+		return -1;
+	if (X.adv[ia].tms < X.adv[ib].tms)
+		return 1;
+	return 0;
 }
 
 static void refresh_browse(uint64_t now)
 {
-	int i;
+	int i, w;
 
 	for (i = 0; i < ADV_CAP; ++i) {
 		if (X.adv[i].ok && now > X.adv[i].tms + STALE_MS)
@@ -250,7 +264,16 @@ static void refresh_browse(uint64_t now)
 		if (X.adv[i].ok)
 			X.ord[X.nord++] = i;
 	}
-	qsort(X.ord, (size_t)X.nord, sizeof X.ord[0], cmp_ord);
+	qsort(X.ord, (size_t)X.nord, sizeof X.ord[0], cmp_browse_ord);
+
+	w = 0;
+	for (i = 0; i < X.nord; ++i) {
+		if (w > 0 && X.adv[X.ord[i]].room_id
+				== X.adv[X.ord[w - 1]].room_id)
+			continue;
+		X.ord[w++] = X.ord[i];
+	}
+	X.nord = w;
 
 	i = X.nord + 1;
 
@@ -308,30 +331,6 @@ static void roster_add(LanUuid id, LanAddr ua, const char *nm)
 	}
 }
 
-static void roster_mark_party_ack(LanUuid id, LanAddr fr)
-{
-	int i;
-
-	for (i = 0; i < LAN_MAX_PEERS; ++i) {
-		if (X.rw[i].ok && !X.rw[i].loc
-				&& memcmp(X.rw[i].id.b, id.b, LAN_UUID_BYTES)
-						== 0) {
-			X.rw[i].ua = fr;
-			X.rw[i].recv_party_ack = true;
-			return;
-		}
-	}
-	roster_add(id, fr, "?");
-	for (i = 0; i < LAN_MAX_PEERS; ++i) {
-		if (X.rw[i].ok && !X.rw[i].loc
-				&& memcmp(X.rw[i].id.b, id.b, LAN_UUID_BYTES)
-						== 0) {
-			X.rw[i].recv_party_ack = true;
-			return;
-		}
-	}
-}
-
 static int cmp_row(const void *a, const void *b)
 {
 	const Row *x = a;
@@ -363,9 +362,9 @@ static bool tx_advert(void)
 	LanAddr bc;
 
 	memset(&m, 0, sizeof m);
-	m.session_id = X.sid;
+	m.room_id = X.room_id;
 	m.spec_version = LAN_SPEC_VERSION;
-	m.peer_hint = 1;
+	m.peer_hint = X.host_flag ? 1 : 0;
 	m.port = X.gport_bound;
 	strncpy(m.room_name, X.room, LAN_ROOM_LEN);
 	m.room_name[LAN_ROOM_LEN - 1] = '\0';
@@ -386,7 +385,7 @@ static bool tx_hello(LanAddr to)
 
 	memset(&h, 0, sizeof h);
 	h.rel_seq = 0;
-	h.session_id = X.sid;
+	h.room_id = X.room_id;
 	h.spec_version = LAN_SPEC_VERSION;
 	h.uuid = X.me;
 	h.skin_id = 0;
@@ -404,44 +403,6 @@ static void hi_mesh(void)
 	for (i = 0; i < LAN_MAX_PEERS; ++i) {
 		if (X.rw[i].ok && !X.rw[i].loc)
 			(void)tx_hello(X.rw[i].ua);
-	}
-}
-
-static bool party_every_remote_acked(void)
-{
-	int i;
-	int n_remote = 0;
-
-	for (i = 0; i < LAN_MAX_PEERS; ++i) {
-		if (!X.rw[i].ok || X.rw[i].loc)
-			continue;
-		n_remote++;
-		if (!X.rw[i].recv_party_ack || !X.rw[i].sent_party_ack)
-			return false;
-	}
-	return n_remote >= 1;
-}
-
-static void ack_mesh(void)
-{
-	LanMsgPartyAck pa;
-	uint8_t py[64];
-	size_t z;
-	int i;
-
-	memset(&pa, 0, sizeof pa);
-	pa.session_id = X.sid;
-	pa.spec_version = LAN_SPEC_VERSION;
-	pa.uuid = X.me;
-	z = lan_enc_party_ack(py, sizeof py, &pa);
-	if (!z)
-		return;
-
-	for (i = 0; i < LAN_MAX_PEERS; ++i) {
-		if (!X.rw[i].ok || X.rw[i].loc)
-			continue;
-		if (tx_raw(X.gfd, LAN_MSG_PARTY_ACK, py, z, X.rw[i].ua))
-			X.rw[i].sent_party_ack = true;
 	}
 }
 
@@ -466,15 +427,18 @@ static void rx_disc(uint64_t now)
 		{
 			LanMsgSessionAdvert m;
 			int j, k;
+			bool primary;
 
 			if (!lan_dec_session_advert(py, pl, &m))
 				continue;
 			if (m.spec_version != LAN_SPEC_VERSION)
 				continue;
 
+			primary = (m.peer_hint != 0);
+
 			j = -1;
 			for (k = 0; k < ADV_CAP; ++k) {
-				if (X.adv[k].ok && X.adv[k].sid == m.session_id) {
+				if (X.adv[k].ok && X.adv[k].room_id == m.room_id) {
 					j = k;
 					break;
 				}
@@ -491,14 +455,20 @@ static void rx_disc(uint64_t now)
 				memset(&X.adv[j], 0, sizeof X.adv[j]);
 			}
 			X.adv[j].ok = true;
-			X.adv[j].sid = m.session_id;
+			X.adv[j].room_id = m.room_id;
 			X.adv[j].tms = now;
-			X.adv[j].src = fr;
-			X.adv[j].gprt = m.port;
 			X.adv[j].mdns = false;
 			X.adv[j].mdns_inst[0] = '\0';
 			strncpy(X.adv[j].rm, m.room_name, LAN_ROOM_LEN);
 			X.adv[j].rm[LAN_ROOM_LEN - 1] = '\0';
+			if (primary) {
+				X.adv[j].from_primary_host = true;
+				X.adv[j].src = fr;
+				X.adv[j].gprt = m.port;
+			} else if (!X.adv[j].from_primary_host) {
+				X.adv[j].src = fr;
+				X.adv[j].gprt = m.port;
+			}
 		}
 	}
 }
@@ -528,31 +498,16 @@ static void rx_game(void)
 			if (!lan_dec_hello(py, pl, &h))
 				continue;
 			if (h.spec_version != LAN_SPEC_VERSION
-					|| h.session_id != X.sid)
+					|| h.room_id != X.room_id)
 				continue;
 			roster_add(h.uuid, fr, h.name);
-			continue;
-		}
-		if (t != LAN_MSG_PARTY_ACK)
-			continue;
-		{
-			LanMsgPartyAck pa;
-
-			if (!lan_dec_party_ack(py, pl, &pa))
-				continue;
-			if (pa.spec_version != LAN_SPEC_VERSION
-					|| pa.session_id != X.sid)
-				continue;
-			if (memcmp(pa.uuid.b, X.me.b, LAN_UUID_BYTES) == 0)
-				continue;
-			roster_mark_party_ack(pa.uuid, fr);
 		}
 	}
 }
 
 static void lobby_create(void)
 {
-	X.sid = rnd64();
+	X.room_id = rnd64();
 	strncpy(X.room, X.tag, LAN_ROOM_LEN);
 	X.room[LAN_ROOM_LEN - 1] = '\0';
 	X.host_flag = true;
@@ -562,7 +517,7 @@ static void lobby_create(void)
 	X.ph = LAN_PARTY_PHASE_LOBBY;
 	game_state = LAN_PARTY_LOBBY;
 	lan_mdns_browse_stop();
-	(void)lan_mdns_register(X.room, X.sid, X.gport_bound,
+	(void)lan_mdns_register(X.room, X.room_id, X.gport_bound,
 			X.dport_bound);
 	(void)tx_advert();
 }
@@ -572,7 +527,7 @@ static void lobby_join(int ord_idx)
 	int ai = X.ord[ord_idx];
 	const Adv *a = &X.adv[ai];
 
-	X.sid = a->sid;
+	X.room_id = a->room_id;
 	strncpy(X.room, a->rm, LAN_ROOM_LEN);
 	X.room[LAN_ROOM_LEN - 1] = '\0';
 	X.host_flag = false;
@@ -585,6 +540,7 @@ static void lobby_join(int ord_idx)
 	X.ph = LAN_PARTY_PHASE_LOBBY;
 	game_state = LAN_PARTY_LOBBY;
 	lan_mdns_browse_stop();
+	(void)tx_advert();
 }
 
 void lan_party_init(void)
@@ -614,7 +570,7 @@ void lan_party_shutdown_all(void)
 	X.nord = 0;
 	X.cursor = 0;
 	X.ph = LAN_PARTY_PHASE_NONE;
-	X.sid = 0;
+	X.room_id = 0;
 	X.jleft = 0;
 }
 
@@ -655,19 +611,12 @@ void lan_party_tick(void)
 	if (X.ph == LAN_PARTY_PHASE_LOBBY) {
 		rx_game();
 
-		if (party_every_remote_acked()) {
-			lan_party_shutdown_all();
-			game_state = TITLE;
-			return;
-		}
-
 		if (now >= X.wadv) {
 			(void)tx_advert();
 			X.wadv = now + LAN_ADVERT_PERIOD_MS;
 		}
 		if (now >= X.wgsp) {
 			hi_mesh();
-			ack_mesh();
 			X.wgsp = now + LAN_HELLO_GOSSIP_MS;
 		}
 		if (X.jleft > 0 && now >= X.jnext) {
@@ -695,11 +644,11 @@ void lan_party_draw(void)
 				"Room selection (UP/DOWN, ENTER, ESC = main menu)");
 		y += 28;
 		for (i = 0; i < X.nord; ++i) {
-			snprintf(line, sizeof line, " %c  %s%s  sid=%016llx",
+			snprintf(line, sizeof line, " %c  %s%s  rid=%016llx",
 					(i == X.cursor) ? '>' : ' ',
 					X.adv[X.ord[i]].rm,
 					X.adv[X.ord[i]].mdns ? " [mDNS]" : "",
-					(unsigned long long)X.adv[X.ord[i]].sid);
+					(unsigned long long)X.adv[X.ord[i]].room_id);
 			al_draw_text(font_color, al_map_rgb(255, 255, 255),
 					20, y, 0, line);
 			y += 22;
@@ -720,13 +669,13 @@ void lan_party_draw(void)
 	if (X.ph != LAN_PARTY_PHASE_LOBBY)
 		return;
 
-	snprintf(line, sizeof line, "Session %016llx   %s  (%s)",
-			(unsigned long long)X.sid, X.room,
+	snprintf(line, sizeof line, "Room %016llx   %s  (%s)",
+			(unsigned long long)X.room_id, X.room,
 			X.host_flag ? "creator" : "joined");
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0, line);
 	y += 28;
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0,
-			"Peers (HELLO), then PARTY_ACK handshake:");
+			"Peers (HELLO gossip to mesh):");
 	y += 24;
 
 	nt = 0;
@@ -743,20 +692,14 @@ void lan_party_draw(void)
 					tmp[i].nm, (unsigned)X.gport_bound);
 		} else {
 			lan_addr_to_string(tmp[i].ua, ap, sizeof ap);
-			snprintf(line, sizeof line, "  %s  %s  tx=%s rx=%s",
-					tmp[i].nm, ap,
-					tmp[i].sent_party_ack ? "y" : "n",
-					tmp[i].recv_party_ack ? "y" : "n");
+			snprintf(line, sizeof line, "  %s  %s",
+					tmp[i].nm, ap);
 		}
 		al_draw_text(font_color, al_map_rgb(255, 255, 255), 16, y, 0,
 				line);
 		y += 22;
 	}
 	y += 8;
-	al_draw_text(font_native, al_map_rgb(160, 160, 160), 12, y, 0,
-			"When tx/rx ACK both yes for every peer → return to "
-			"main menu");
-	y += 16;
 	al_draw_text(font_native, al_map_rgb(160, 160, 160), 12, y, 0,
 			"ESC = room list  (second host: use different discovery "
 			"port)");
@@ -795,7 +738,7 @@ void lan_party_key_down(int kc)
 			if (X.host_flag)
 				lan_mdns_unregister();
 			X.ph = LAN_PARTY_PHASE_BROWSE;
-			X.sid = 0;
+			X.room_id = 0;
 			X.jleft = 0;
 			memset(X.adv, 0, sizeof X.adv);
 			X.cursor = 0;

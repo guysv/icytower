@@ -165,24 +165,6 @@ bool lan_frame_decode(const uint8_t *buf, size_t buf_len, LanMsgType *out_type,
 	return true;
 }
 
-bool lan_msg_is_reliable(LanMsgType t)
-{
-	switch (t) {
-	case LAN_MSG_HELLO:
-	case LAN_MSG_ROSTER_SNAPSHOT:
-	case LAN_MSG_APPEARANCE:
-	case LAN_MSG_LOBBY_READY:
-	case LAN_MSG_LOBBY_PHASE_NONCE:
-	case LAN_MSG_JOIN_NONCE:
-	case LAN_MSG_COUNTDOWN_ANCHOR:
-	case LAN_MSG_ELIMINATE:
-	case LAN_MSG_LEAVE:
-		return true;
-	default:
-		return false;
-	}
-}
-
 /* --- Helpers for fixed-length strings ------------------------------------ */
 
 static void put_fixed_string(uint8_t **p, const char *s, size_t cap)
@@ -215,7 +197,7 @@ size_t lan_enc_session_advert(uint8_t *out, size_t cap,
 {
 	uint8_t *p = out;
 	if (cap < 8u + 2u + 1u + LAN_ROOM_LEN + 2u) return 0;
-	lan_w_u64(&p, m->session_id);
+	lan_w_u64(&p, m->room_id);
 	lan_w_u16(&p, m->spec_version);
 	lan_w_u8 (&p, m->peer_hint);
 	put_fixed_string(&p, m->room_name, LAN_ROOM_LEN);
@@ -228,7 +210,7 @@ bool lan_dec_session_advert(const uint8_t *buf, size_t len,
 {
 	bool ok = true;
 	const uint8_t *p = buf, *end = buf + len;
-	m->session_id   = lan_r_u64(&p, end, &ok);
+	m->room_id      = lan_r_u64(&p, end, &ok);
 	m->spec_version = lan_r_u16(&p, end, &ok);
 	m->peer_hint    = lan_r_u8 (&p, end);
 	get_fixed_string(&p, end, m->room_name, LAN_ROOM_LEN, &ok);
@@ -241,7 +223,7 @@ size_t lan_enc_hello(uint8_t *out, size_t cap, const LanMsgHello *m)
 	uint8_t *p = out;
 	if (cap < 2u + 8u + 2u + LAN_UUID_BYTES + 1u + LAN_NAME_LEN + 4u) return 0;
 	lan_w_u16(&p, m->rel_seq);
-	lan_w_u64(&p, m->session_id);
+	lan_w_u64(&p, m->room_id);
 	lan_w_u16(&p, m->spec_version);
 	lan_w_bytes(&p, m->uuid.b, LAN_UUID_BYTES);
 	lan_w_u8(&p, m->skin_id);
@@ -255,294 +237,11 @@ bool lan_dec_hello(const uint8_t *buf, size_t len, LanMsgHello *m)
 	bool ok = true;
 	const uint8_t *p = buf, *end = buf + len;
 	m->rel_seq      = lan_r_u16(&p, end, &ok);
-	m->session_id   = lan_r_u64(&p, end, &ok);
+	m->room_id      = lan_r_u64(&p, end, &ok);
 	m->spec_version = lan_r_u16(&p, end, &ok);
 	lan_r_bytes(&p, end, m->uuid.b, LAN_UUID_BYTES, &ok);
 	m->skin_id      = lan_r_u8 (&p, end);
 	get_fixed_string(&p, end, m->name, LAN_NAME_LEN, &ok);
 	m->feature_flags = lan_r_u32(&p, end, &ok);
-	return ok;
-}
-
-size_t lan_enc_roster_snapshot(uint8_t *out, size_t cap,
-		const LanMsgRosterSnapshot *m)
-{
-	uint8_t *p = out;
-	size_t i;
-	if (m->count > LAN_MAX_PEERS) return 0;
-	if (cap < 2u + 8u + 1u + (size_t)m->count * LAN_UUID_BYTES + 2u) return 0;
-	lan_w_u16(&p, m->rel_seq);
-	lan_w_u64(&p, m->session_id);
-	lan_w_u8 (&p, m->count);
-	for (i = 0; i < m->count; ++i)
-		lan_w_bytes(&p, m->uuids[i].b, LAN_UUID_BYTES);
-	lan_w_u16(&p, m->spec_version);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_roster_snapshot(const uint8_t *buf, size_t len,
-		LanMsgRosterSnapshot *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	uint8_t i;
-	m->rel_seq    = lan_r_u16(&p, end, &ok);
-	m->session_id = lan_r_u64(&p, end, &ok);
-	m->count      = lan_r_u8 (&p, end);
-	if (m->count > LAN_MAX_PEERS) return false;
-	for (i = 0; i < m->count; ++i)
-		lan_r_bytes(&p, end, m->uuids[i].b, LAN_UUID_BYTES, &ok);
-	m->spec_version = lan_r_u16(&p, end, &ok);
-	return ok;
-}
-
-size_t lan_enc_appearance(uint8_t *out, size_t cap, const LanMsgAppearance *m)
-{
-	uint8_t *p = out;
-	if (cap < 2u + 1u + 1u + LAN_NAME_LEN) return 0;
-	lan_w_u16(&p, m->rel_seq);
-	lan_w_u8 (&p, m->player_id);
-	lan_w_u8 (&p, m->skin_id);
-	put_fixed_string(&p, m->name, LAN_NAME_LEN);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_appearance(const uint8_t *buf, size_t len, LanMsgAppearance *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->rel_seq   = lan_r_u16(&p, end, &ok);
-	m->player_id = lan_r_u8 (&p, end);
-	m->skin_id   = lan_r_u8 (&p, end);
-	get_fixed_string(&p, end, m->name, LAN_NAME_LEN, &ok);
-	return ok;
-}
-
-size_t lan_enc_lobby_ready(uint8_t *out, size_t cap, const LanMsgLobbyReady *m)
-{
-	uint8_t *p = out;
-	if (cap < 2u + 1u + 1u) return 0;
-	lan_w_u16(&p, m->rel_seq);
-	lan_w_u8 (&p, m->player_id);
-	lan_w_u8 (&p, m->ready);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_lobby_ready(const uint8_t *buf, size_t len, LanMsgLobbyReady *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->rel_seq   = lan_r_u16(&p, end, &ok);
-	m->player_id = lan_r_u8 (&p, end);
-	m->ready     = lan_r_u8 (&p, end);
-	return ok;
-}
-
-size_t lan_enc_lobby_phase_nonce(uint8_t *out, size_t cap,
-		const LanMsgLobbyPhaseNonce *m)
-{
-	uint8_t *p = out;
-	if (cap < 2u + 4u) return 0;
-	lan_w_u16(&p, m->rel_seq);
-	lan_w_u32(&p, m->round_id);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_lobby_phase_nonce(const uint8_t *buf, size_t len,
-		LanMsgLobbyPhaseNonce *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->rel_seq  = lan_r_u16(&p, end, &ok);
-	m->round_id = lan_r_u32(&p, end, &ok);
-	return ok;
-}
-
-size_t lan_enc_join_nonce(uint8_t *out, size_t cap, const LanMsgJoinNonce *m)
-{
-	uint8_t *p = out;
-	if (cap < 2u + 1u + 4u + 4u) return 0;
-	lan_w_u16(&p, m->rel_seq);
-	lan_w_u8 (&p, m->player_id);
-	lan_w_u32(&p, m->round_id);
-	lan_w_u32(&p, m->nonce);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_join_nonce(const uint8_t *buf, size_t len, LanMsgJoinNonce *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->rel_seq   = lan_r_u16(&p, end, &ok);
-	m->player_id = lan_r_u8 (&p, end);
-	m->round_id  = lan_r_u32(&p, end, &ok);
-	m->nonce     = lan_r_u32(&p, end, &ok);
-	return ok;
-}
-
-size_t lan_enc_countdown_anchor(uint8_t *out, size_t cap,
-		const LanMsgCountdownAnchor *m)
-{
-	uint8_t *p = out;
-	if (cap < 2u + 1u + 4u + 8u) return 0;
-	lan_w_u16(&p, m->rel_seq);
-	lan_w_u8 (&p, m->player_id);
-	lan_w_u32(&p, m->round_id);
-	lan_w_u64(&p, m->propose_ms);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_countdown_anchor(const uint8_t *buf, size_t len,
-		LanMsgCountdownAnchor *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->rel_seq    = lan_r_u16(&p, end, &ok);
-	m->player_id  = lan_r_u8 (&p, end);
-	m->round_id   = lan_r_u32(&p, end, &ok);
-	m->propose_ms = lan_r_u64(&p, end, &ok);
-	return ok;
-}
-
-size_t lan_enc_sync_keys(uint8_t *out, size_t cap, const LanMsgSyncKeys *m)
-{
-	uint8_t *p = out;
-	if (cap < 1u + 4u + 1u) return 0;
-	lan_w_u8 (&p, m->player_id);
-	lan_w_u32(&p, m->seq);
-	lan_w_u8 (&p, m->keybits);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_sync_keys(const uint8_t *buf, size_t len, LanMsgSyncKeys *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->player_id = lan_r_u8 (&p, end);
-	m->seq       = lan_r_u32(&p, end, &ok);
-	m->keybits   = lan_r_u8 (&p, end);
-	return ok;
-}
-
-size_t lan_enc_control_edge(uint8_t *out, size_t cap, const LanMsgControlEdge *m)
-{
-	uint8_t *p = out;
-	if (cap < 1u + 4u + 1u + 8u) return 0;
-	lan_w_u8 (&p, m->player_id);
-	lan_w_u32(&p, m->seq);
-	lan_w_u8 (&p, m->keybits_after);
-	lan_w_u64(&p, m->timestamp_ms);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_control_edge(const uint8_t *buf, size_t len, LanMsgControlEdge *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->player_id     = lan_r_u8 (&p, end);
-	m->seq           = lan_r_u32(&p, end, &ok);
-	m->keybits_after = lan_r_u8 (&p, end);
-	m->timestamp_ms  = lan_r_u64(&p, end, &ok);
-	return ok;
-}
-
-size_t lan_enc_score_telemetry(uint8_t *out, size_t cap,
-		const LanMsgScoreTelemetry *m)
-{
-	uint8_t *p = out;
-	if (cap < 1u + 4u + 4u + 4u) return 0;
-	lan_w_u8 (&p, m->player_id);
-	lan_w_u32(&p, m->seq_t);
-	lan_w_u32(&p, (uint32_t)m->floor);
-	lan_w_u32(&p, m->score);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_score_telemetry(const uint8_t *buf, size_t len,
-		LanMsgScoreTelemetry *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->player_id = lan_r_u8 (&p, end);
-	m->seq_t     = lan_r_u32(&p, end, &ok);
-	m->floor     = (int32_t)lan_r_u32(&p, end, &ok);
-	m->score     = lan_r_u32(&p, end, &ok);
-	return ok;
-}
-
-size_t lan_enc_eliminate(uint8_t *out, size_t cap, const LanMsgEliminate *m)
-{
-	uint8_t *p = out;
-	if (cap < 2u + 1u + 4u + 1u) return 0;
-	lan_w_u16(&p, m->rel_seq);
-	lan_w_u8 (&p, m->player_id);
-	lan_w_u32(&p, m->round_id);
-	lan_w_u8 (&p, m->reason);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_eliminate(const uint8_t *buf, size_t len, LanMsgEliminate *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->rel_seq   = lan_r_u16(&p, end, &ok);
-	m->player_id = lan_r_u8 (&p, end);
-	m->round_id  = lan_r_u32(&p, end, &ok);
-	m->reason    = lan_r_u8 (&p, end);
-	return ok;
-}
-
-size_t lan_enc_leave(uint8_t *out, size_t cap, const LanMsgLeave *m)
-{
-	uint8_t *p = out;
-	if (cap < 2u + 1u) return 0;
-	lan_w_u16(&p, m->rel_seq);
-	lan_w_u8 (&p, m->player_id);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_leave(const uint8_t *buf, size_t len, LanMsgLeave *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->rel_seq   = lan_r_u16(&p, end, &ok);
-	m->player_id = lan_r_u8 (&p, end);
-	return ok;
-}
-
-size_t lan_enc_rel_ack(uint8_t *out, size_t cap, const LanMsgRelAck *m)
-{
-	uint8_t *p = out;
-	if (cap < 2u) return 0;
-	lan_w_u16(&p, m->acked_seq);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_rel_ack(const uint8_t *buf, size_t len, LanMsgRelAck *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->acked_seq = lan_r_u16(&p, end, &ok);
-	return ok;
-}
-
-size_t lan_enc_party_ack(uint8_t *out, size_t cap, const LanMsgPartyAck *m)
-{
-	uint8_t *p = out;
-	if (cap < 8u + 2u + LAN_UUID_BYTES)
-		return 0;
-	lan_w_u64(&p, m->session_id);
-	lan_w_u16(&p, m->spec_version);
-	lan_w_bytes(&p, m->uuid.b, LAN_UUID_BYTES);
-	return (size_t)(p - out);
-}
-
-bool lan_dec_party_ack(const uint8_t *buf, size_t len, LanMsgPartyAck *m)
-{
-	bool ok = true;
-	const uint8_t *p = buf, *end = buf + len;
-	m->session_id   = lan_r_u64(&p, end, &ok);
-	m->spec_version = lan_r_u16(&p, end, &ok);
-	lan_r_bytes(&p, end, m->uuid.b, LAN_UUID_BYTES, &ok);
 	return ok;
 }

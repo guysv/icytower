@@ -163,14 +163,14 @@ static int txt_append(uint8_t *buf, int pos, int cap, const char *kv)
 	return pos + (int)n;
 }
 
-static int build_txt(uint8_t *out, int cap, uint64_t sid, const char *room,
+static int build_txt(uint8_t *out, int cap, uint64_t room_id, const char *room,
 		uint16_t dport)
 {
 	char kv[LAN_ROOM_LEN + 48];
 	int p = 0;
 
 	snprintf(kv, sizeof kv, "sid=%llu",
-			(unsigned long long)sid);
+			(unsigned long long)room_id);
 	p = txt_append(out, p, cap, kv);
 	snprintf(kv, sizeof kv, "room=%s", room);
 	p = txt_append(out, p, cap, kv);
@@ -220,7 +220,7 @@ static void resolve_reply(DNSServiceRef sdRef, DNSServiceFlags flags,
 		const char *full_name, const char *host_target, uint16_t port,
 		uint16_t txt_len, const unsigned char *txt, void *context)
 {
-	uint64_t sid = 0;
+	uint64_t room_id = 0;
 	uint16_t dport = LAN_DEFAULT_PORT;
 	char room[LAN_ROOM_LEN];
 	struct addrinfo hints, *ai = NULL;
@@ -235,7 +235,7 @@ static void resolve_reply(DNSServiceRef sdRef, DNSServiceFlags flags,
 		goto done;
 	}
 
-	if (!txt_get_u64(txt, txt_len, "sid", &sid)) {
+	if (!txt_get_u64(txt, txt_len, "sid", &room_id)) {
 		goto done;
 	}
 	if (!txt_get_room(txt, txt_len, room, sizeof room)) {
@@ -258,7 +258,7 @@ static void resolve_reply(DNSServiceRef sdRef, DNSServiceFlags flags,
 			: (full_name ? full_name : host_target);
 
 	if (ipv4 != 0)
-		g_cb(g_ctx, true, inst, sid, room, ntohs(port), ipv4, dport);
+		g_cb(g_ctx, true, inst, room_id, room, ntohs(port), ipv4, dport);
 
 done:
 	if (rctx)
@@ -309,7 +309,7 @@ void lan_mdns_browse_stop(void)
 	}
 }
 
-bool lan_mdns_register(const char *room, uint64_t sid, uint16_t game_port,
+bool lan_mdns_register(const char *room, uint64_t room_id, uint16_t game_port,
 		uint16_t discovery_port)
 {
 	uint8_t txt[256];
@@ -322,7 +322,7 @@ bool lan_mdns_register(const char *room, uint64_t sid, uint16_t game_port,
 		room = "";
 
 	memset(txt, 0, sizeof txt);
-	tln = build_txt(txt, sizeof txt, sid, room, discovery_port);
+	tln = build_txt(txt, sizeof txt, room_id, room, discovery_port);
 
 	strncpy(name_label, room, sizeof name_label - 1);
 	name_label[sizeof name_label - 1] = '\0';
@@ -373,11 +373,11 @@ void lan_mdns_browse_stop(void)
 {
 }
 
-bool lan_mdns_register(const char *room, uint64_t sid, uint16_t game_port,
+bool lan_mdns_register(const char *room, uint64_t room_id, uint16_t game_port,
 		uint16_t discovery_port)
 {
 	(void)room;
-	(void)sid;
+	(void)room_id;
 	(void)game_port;
 	(void)discovery_port;
 	return false;

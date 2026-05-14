@@ -15,7 +15,7 @@
 #include "lan_msg.h"
 #include "lan_net.h"
 
-#define TEST_SID  0xcafebeef12345678ull
+#define TEST_ROOM_ID  0xcafebeef12345678ull
 
 enum { PIPE_RD, PIPE_WR };
 
@@ -27,7 +27,7 @@ static bool tx_hi(int gf, LanAddr to, LanUuid const *id, uint16_t seq)
 
 	memset(&h, 0, sizeof h);
 	h.rel_seq = seq;
-	h.session_id = TEST_SID;
+	h.room_id = TEST_ROOM_ID;
 	h.spec_version = LAN_SPEC_VERSION;
 	h.uuid = *id;
 	h.skin_id = 0;
@@ -107,7 +107,7 @@ static int parent_main(int wr_pipe)
 			LanMsgHello h;
 			if (!lan_dec_hello(py, pl, &h))
 				continue;
-			if (h.session_id == TEST_SID
+			if (h.room_id == TEST_ROOM_ID
 					&& memcmp(h.uuid.b, expect.b,
 					    LAN_UUID_BYTES) == 0) {
 				lan_net_close(gf);
