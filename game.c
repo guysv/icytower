@@ -39,6 +39,14 @@ void initialize_game(void) {
 	combo_trail_init();
 }
 
+void game_reset_for_lobby_preview(void)
+{
+	keys = 0;
+	animation = ANIMATION_IDLE;
+	animation_frame = 0;
+	combo_trail_init();
+}
+
 void press_left(void) { keys |= KEY_LEFT; }
 void press_right(void) { keys |= KEY_RIGHT; }
 void press_jump(void) { keys |= KEY_JUMP; }

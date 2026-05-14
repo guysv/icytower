@@ -24,7 +24,9 @@
 
 #include "fullscreen.h"
 #include "gfx.h"
+#include "game.h"
 #include "icytower.h"
+#include "options.h"
 
 #include "lan_clock.h"
 #include "lan_internal.h"
@@ -68,6 +70,7 @@ typedef struct {
 	LanPartyPhase ph;
 
 	bool        host_flag;
+	bool        lobby_level_seeded;
 	uint32_t    level_seed;
 	uint64_t    room_id;
 	char        room[LAN_ROOM_LEN];
@@ -703,8 +706,13 @@ static void rx_game(uint64_t now)
 				continue;
 			if (roster_rx_is_dup(&r.sender, r.rel_seq))
 				continue;
-			if (!X.host_flag)
+			if (!X.host_flag) {
 				X.level_seed = r.level_seed;
+				if (!X.lobby_level_seeded) {
+					seed_state(&it_state, r.level_seed);
+					X.lobby_level_seeded = true;
+				}
+			}
 			for (i = 0; i < (unsigned)r.count; ++i) {
 				LanMsgRosterEntry *e = &r.peer[i];
 				LanAddr ua;
@@ -747,6 +755,9 @@ static void lobby_create(void)
 	X.jleft = 0;
 	X.ph = LAN_PARTY_PHASE_LOBBY;
 	game_state = LAN_PARTY_LOBBY;
+	init_state(&it_state, rejump, X.level_seed);
+	game_reset_for_lobby_preview();
+	X.lobby_level_seeded = true;
 	lan_mdns_browse_stop();
 }
 
@@ -768,6 +779,9 @@ static void lobby_join(int ord_idx)
 	X.wadv = X.wgsp = 0;
 	X.ph = LAN_PARTY_PHASE_LOBBY;
 	game_state = LAN_PARTY_LOBBY;
+	init_empty_state(&it_state, rejump);
+	game_reset_for_lobby_preview();
+	X.lobby_level_seeded = false;
 	lan_mdns_browse_stop();
 }
 
@@ -901,11 +915,18 @@ void lan_party_draw(void)
 	if (X.ph != LAN_PARTY_PHASE_LOBBY)
 		return;
 
+	draw_game();
+
 	snprintf(line, sizeof line, "Room %016llx   %s  (%s)",
 			(unsigned long long)X.room_id, X.room,
 			X.host_flag ? "hosted" : "joined");
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0, line);
 	y += 28;
+	if (!X.host_flag && !X.lobby_level_seeded) {
+		al_draw_text(font_color, al_map_rgb(255, 200, 120), 12, y, 0,
+				"Waiting for host (WELCOME)…");
+		y += 24;
+	}
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0,
 			"Peers (HELLO / WELCOME mesh):");
 	y += 24;
@@ -971,6 +992,7 @@ void lan_party_key_down(int kc)
 			X.ph = LAN_PARTY_PHASE_BROWSE;
 			X.room_id = 0;
 			X.level_seed = 0;
+			X.lobby_level_seeded = false;
 			X.jleft = 0;
 			memset(X.adv, 0, sizeof X.adv);
 			X.cursor = 0;

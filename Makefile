@@ -65,7 +65,7 @@ highscores.o: highscores.c highscores.h options.h
 combo_trail.o: combo_trail.c combo_trail.h gfx.h options.h physics.h
 
 ifeq ($(ICYTOWER_LAN),1)
-lan/lan_party.o: lan/lan_party.c lan/lan_party.h lan/lan_internal.h lan/lan_msg.h lan/lan_mdns.h lan/lan_net.h lan/lan_clock.h icytower.h gfx.h fullscreen.h
+lan/lan_party.o: lan/lan_party.c lan/lan_party.h lan/lan_internal.h lan/lan_msg.h lan/lan_mdns.h lan/lan_net.h lan/lan_clock.h icytower.h gfx.h fullscreen.h game.h options.h
 lan/lan_net.o: lan/lan_net.c lan/lan_net.h lan/lan_internal.h
 lan/lan_clock.o: lan/lan_clock.c lan/lan_clock.h
 lan/lan_msg.o: lan/lan_msg.c lan/lan_msg.h lan/lan_internal.h

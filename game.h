@@ -3,6 +3,7 @@
 extern IT_STATE it_state;
 
 void initialize_game(void);
+void game_reset_for_lobby_preview(void);
 
 void press_left(void);
 void press_right(void);
