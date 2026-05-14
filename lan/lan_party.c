@@ -20,6 +20,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "fullscreen.h"
 #include "gfx.h"
 #include "icytower.h"
 
@@ -843,12 +844,12 @@ void lan_party_draw(void)
 				(X.cursor == X.nord) ? '>' : ' ');
 		al_draw_text(font_color, al_map_rgb(180, 255, 180), 20, y, 0,
 				line);
-		y += 26;
 		snprintf(line, sizeof line, "discovery :%u  game :%u",
 				(unsigned)X.dport_bound,
 				(unsigned)X.gport_bound);
 		al_draw_text(font_native, al_map_rgb(150, 150, 150), 12,
-				y, 0, line);
+				ICYTOWER_LOGICAL_H - al_get_font_line_height(font_native) - 8,
+				0, line);
 		return;
 	}
 
