@@ -1,5 +1,5 @@
 /*
- * Shared constants for LAN Phase 1 (connectivity). Wire format aligns with v1 spec;
+ * Shared constants for LAN Phase 1 (connectivity). Wire format aligns with ITW1 framing;
  * LAN_SPEC_VERSION bumps when payloads change. Game discovery uses a 64-bit room_id.
  */
 
@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LAN_SPEC_VERSION            1u
+#define LAN_SPEC_VERSION            3u
 
 #define LAN_DEFAULT_PORT            51812u /* discovery + legacy default */
 #define LAN_MULTICAST_GROUP         "239.43.137.251"
@@ -30,6 +30,8 @@
 
 #define LAN_ADVERT_PERIOD_MS        900u
 #define LAN_HELLO_GOSSIP_MS        280u
+/* Evict lobby peers absent this many gossip periods (~LAN_HELLO_GOSSIP_MS each). */
+#define LAN_PRESENCE_MISS_CAP       8u
 
 #define LAN_FRAME_MAGIC0            'I'
 #define LAN_FRAME_MAGIC1            'T'
@@ -41,7 +43,9 @@
 
 typedef enum {
 	LAN_MSG_SESSION_ADVERT      = 0x00,
-	LAN_MSG_HELLO               = 0x01
+	LAN_MSG_HELLO               = 0x01,
+	LAN_MSG_GOODBYE             = 0x02,
+	LAN_MSG_ROSTER              = 0x03
 } LanMsgType;
 
 typedef enum {

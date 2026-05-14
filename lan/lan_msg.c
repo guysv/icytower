@@ -245,3 +245,75 @@ bool lan_dec_hello(const uint8_t *buf, size_t len, LanMsgHello *m)
 	m->feature_flags = lan_r_u32(&p, end, &ok);
 	return ok;
 }
+
+size_t lan_enc_goodbye(uint8_t *out, size_t cap, const LanMsgGoodbye *m)
+{
+	uint8_t *p = out;
+	if (cap < 8u + 2u + LAN_UUID_BYTES)
+		return 0;
+	lan_w_u64(&p, m->room_id);
+	lan_w_u16(&p, m->spec_version);
+	lan_w_bytes(&p, m->uuid.b, LAN_UUID_BYTES);
+	return (size_t)(p - out);
+}
+
+bool lan_dec_goodbye(const uint8_t *buf, size_t len, LanMsgGoodbye *m)
+{
+	bool ok = true;
+	const uint8_t *p = buf, *end = buf + len;
+	m->room_id      = lan_r_u64(&p, end, &ok);
+	m->spec_version = lan_r_u16(&p, end, &ok);
+	lan_r_bytes(&p, end, m->uuid.b, LAN_UUID_BYTES, &ok);
+	return ok && p == end;
+}
+
+size_t lan_enc_roster(uint8_t *out, size_t cap, const LanMsgRoster *m)
+{
+	uint8_t *p = out;
+	size_t need;
+	unsigned i;
+
+	if (m->count > LAN_MAX_PEERS)
+		return 0;
+	need = 2u + 8u + 2u + LAN_UUID_BYTES + 1u
+		+ (size_t)m->count * (LAN_UUID_BYTES + 4u + 2u + LAN_NAME_LEN);
+	if (cap < need)
+		return 0;
+	lan_w_u16(&p, m->rel_seq);
+	lan_w_u64(&p, m->room_id);
+	lan_w_u16(&p, m->spec_version);
+	lan_w_bytes(&p, m->sender.b, LAN_UUID_BYTES);
+	lan_w_u8(&p, m->count);
+	for (i = 0; i < (unsigned)m->count; ++i) {
+		lan_w_bytes(&p, m->peer[i].uuid.b, LAN_UUID_BYTES);
+		lan_w_u32(&p, m->peer[i].ip);
+		lan_w_u16(&p, m->peer[i].udp_port);
+		put_fixed_string(&p, m->peer[i].name, LAN_NAME_LEN);
+	}
+	return (size_t)(p - out);
+}
+
+bool lan_dec_roster(const uint8_t *buf, size_t len, LanMsgRoster *m)
+{
+	bool ok = true;
+	const uint8_t *p = buf, *end = buf + len;
+	unsigned i;
+
+	memset(m, 0, sizeof *m);
+	m->rel_seq      = lan_r_u16(&p, end, &ok);
+	m->room_id      = lan_r_u64(&p, end, &ok);
+	m->spec_version = lan_r_u16(&p, end, &ok);
+	lan_r_bytes(&p, end, m->sender.b, LAN_UUID_BYTES, &ok);
+	m->count        = lan_r_u8(&p, end);
+	if (m->count > LAN_MAX_PEERS) {
+		ok = false;
+		return false;
+	}
+	for (i = 0; i < (unsigned)m->count; ++i) {
+		lan_r_bytes(&p, end, m->peer[i].uuid.b, LAN_UUID_BYTES, &ok);
+		m->peer[i].ip = lan_r_u32(&p, end, &ok);
+		m->peer[i].udp_port = lan_r_u16(&p, end, &ok);
+		get_fixed_string(&p, end, m->peer[i].name, LAN_NAME_LEN, &ok);
+	}
+	return ok && p == end;
+}

@@ -1,8 +1,9 @@
 /*
  * Phase 1 LAN: SESSION_ADVERT on discovery (multicast+broadcast) carries room_id,
- * room name, and game port. HELLO on the game socket carries the same room_id
- * for roster. Primary (creator) adverts use peer_hint=1 so discovery merges
- * preserve the host address when joiners also multicast SESSION_ADVERT.
+ * room name, and game port. HELLO (mesh + liveness), ROSTER, GOODBYE on the game
+ * socket maintain mesh roster and liveness. Primary (creator) adverts use
+ * peer_hint=1 so discovery merges preserve the host address when joiners also
+ * multicast SESSION_ADVERT; stale primary falls back to joiner endpoints.
  */
 
 #include "lan_party.h"
@@ -37,6 +38,7 @@ typedef struct {
 	bool        from_primary_host;
 	char        rm[LAN_ROOM_LEN];
 	uint64_t    tms;
+	uint64_t    primary_t_ms;
 	LanAddr     src;
 	uint16_t    gprt;
 	bool        mdns;
@@ -49,6 +51,7 @@ typedef struct {
 	LanUuid     id;
 	LanAddr     ua;
 	char        nm[LAN_NAME_LEN];
+	uint64_t    last_hb_ms;
 } Row;
 
 typedef struct {
@@ -72,6 +75,14 @@ typedef struct {
 	int         nord;
 
 	Row         rw[LAN_MAX_PEERS];
+
+	bool        rrx_use[LAN_MAX_PEERS];
+	LanUuid     rrx_id[LAN_MAX_PEERS];
+	uint16_t    rrx_seq[LAN_MAX_PEERS];
+
+	uint16_t    roster_tx_seq;
+	uint16_t    hello_rel_mesh;
+	/* HELLO rel_seq: 0 = request ROSTER reply; non-zero = mesh gossip. */
 
 	int         cursor;
 	uint64_t    wadv;
@@ -175,6 +186,7 @@ static void mdns_apply(void *ctx, bool add, const char *instance,
 	X.adv[j].ok = true;
 	X.adv[j].room_id = room_id;
 	X.adv[j].from_primary_host = true;
+	X.adv[j].primary_t_ms = now;
 	X.adv[j].tms = now;
 	X.adv[j].src.ip = ipv4;
 	X.adv[j].src.port = dport;
@@ -287,6 +299,8 @@ static void roster_local_only(void)
 {
 	int i;
 
+	memset(X.rrx_use, 0, sizeof X.rrx_use);
+
 	for (i = 0; i < LAN_MAX_PEERS; ++i)
 		memset(&X.rw[i], 0, sizeof X.rw[i]);
 
@@ -297,9 +311,74 @@ static void roster_local_only(void)
 	X.rw[0].nm[LAN_NAME_LEN - 1] = '\0';
 	X.rw[0].ua.ip = ntohl(inet_addr("127.0.0.1"));
 	X.rw[0].ua.port = X.gport_bound;
+	X.roster_tx_seq = 0;
+	X.hello_rel_mesh = 0;
 }
 
-static void roster_add(LanUuid id, LanAddr ua, const char *nm)
+static void roster_remove(const LanUuid *id)
+{
+	int i, k;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (X.rw[i].ok && !X.rw[i].loc
+				&& memcmp(X.rw[i].id.b, id->b, LAN_UUID_BYTES)
+						== 0) {
+			memset(&X.rw[i], 0, sizeof X.rw[i]);
+			for (k = 0; k < LAN_MAX_PEERS; ++k) {
+				if (X.rrx_use[k]
+						&& memcmp(X.rrx_id[k].b, id->b,
+							LAN_UUID_BYTES) == 0)
+					X.rrx_use[k] = false;
+			}
+			return;
+		}
+	}
+}
+
+/*
+ * Return true if this (sender, rel_seq) is an exact duplicate ROSTER wire
+ * duplicate; false if new or updated seq for that sender.
+ */
+static bool roster_rx_is_dup(const LanUuid *sender, uint16_t seq)
+{
+	int i, e = -1;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (!X.rrx_use[i]) {
+			if (e < 0)
+				e = i;
+			continue;
+		}
+		if (memcmp(X.rrx_id[i].b, sender->b, LAN_UUID_BYTES) == 0) {
+			if (X.rrx_seq[i] == seq)
+				return true;
+			X.rrx_seq[i] = seq;
+			return false;
+		}
+	}
+	if (e < 0)
+		e = 0;
+	X.rrx_use[e] = true;
+	X.rrx_id[e] = *sender;
+	X.rrx_seq[e] = seq;
+	return false;
+}
+
+static void roster_hb_evict(uint64_t now)
+{
+	uint64_t thr =
+			(uint64_t)LAN_HELLO_GOSSIP_MS * LAN_PRESENCE_MISS_CAP;
+	int i;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (!X.rw[i].ok || X.rw[i].loc)
+			continue;
+		if (now - X.rw[i].last_hb_ms >= thr)
+			roster_remove(&X.rw[i].id);
+	}
+}
+
+static void roster_add(LanUuid id, LanAddr ua, const char *nm, uint64_t now_ts)
 {
 	int i;
 
@@ -311,6 +390,7 @@ static void roster_add(LanUuid id, LanAddr ua, const char *nm)
 				&& memcmp(X.rw[i].id.b, id.b, LAN_UUID_BYTES)
 						== 0) {
 			X.rw[i].ua = ua;
+			X.rw[i].last_hb_ms = now_ts;
 			if (nm && nm[0]) {
 				strncpy(X.rw[i].nm, nm, LAN_NAME_LEN);
 				X.rw[i].nm[LAN_NAME_LEN - 1] = '\0';
@@ -324,6 +404,7 @@ static void roster_add(LanUuid id, LanAddr ua, const char *nm)
 			X.rw[i].ok = true;
 			X.rw[i].id = id;
 			X.rw[i].ua = ua;
+			X.rw[i].last_hb_ms = now_ts;
 			strncpy(X.rw[i].nm, nm ? nm : "?", LAN_NAME_LEN);
 			X.rw[i].nm[LAN_NAME_LEN - 1] = '\0';
 			return;
@@ -377,14 +458,14 @@ static bool tx_advert(void)
 		&& tx_raw(X.dfd, LAN_MSG_SESSION_ADVERT, py, z, bc);
 }
 
-static bool tx_hello(LanAddr to)
+static bool tx_hello(LanAddr to, uint16_t rel_seq)
 {
 	LanMsgHello h;
 	uint8_t py[256];
 	size_t z;
 
 	memset(&h, 0, sizeof h);
-	h.rel_seq = 0;
+	h.rel_seq = rel_seq;
 	h.room_id = X.room_id;
 	h.spec_version = LAN_SPEC_VERSION;
 	h.uuid = X.me;
@@ -396,13 +477,71 @@ static bool tx_hello(LanAddr to)
 	return z && tx_raw(X.gfd, LAN_MSG_HELLO, py, z, to);
 }
 
+static bool tx_goodbye(uint64_t room_id, LanAddr to)
+{
+	LanMsgGoodbye g;
+	uint8_t py[64];
+	size_t z;
+
+	memset(&g, 0, sizeof g);
+	g.room_id = room_id;
+	g.spec_version = LAN_SPEC_VERSION;
+	g.uuid = X.me;
+	z = lan_enc_goodbye(py, sizeof py, &g);
+	return z && tx_raw(X.gfd, LAN_MSG_GOODBYE, py, z, to);
+}
+
+static bool tx_roster(LanAddr to)
+{
+	LanMsgRoster r;
+	uint8_t py[LAN_FRAME_MAX_PAYLOAD];
+	size_t z;
+	unsigned n = 0;
+	int i;
+
+	memset(&r, 0, sizeof r);
+	X.roster_tx_seq++;
+	r.rel_seq = X.roster_tx_seq;
+	r.room_id = X.room_id;
+	r.spec_version = LAN_SPEC_VERSION;
+	r.sender = X.me;
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		LanMsgRosterEntry *e;
+
+		if (!X.rw[i].ok || X.rw[i].loc)
+			continue;
+		if (n >= LAN_MAX_PEERS)
+			break;
+		e = &r.peer[n];
+		e->uuid = X.rw[i].id;
+		e->ip = X.rw[i].ua.ip;
+		e->udp_port = X.rw[i].ua.port;
+		strncpy(e->name, X.rw[i].nm, LAN_NAME_LEN);
+		e->name[LAN_NAME_LEN - 1] = '\0';
+		n++;
+	}
+	r.count = (uint8_t)n;
+	z = lan_enc_roster(py, sizeof py, &r);
+	return z && tx_raw(X.gfd, LAN_MSG_ROSTER, py, z, to);
+}
+
+static void goodbye_mesh(uint64_t room_id)
+{
+	int i;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (X.rw[i].ok && !X.rw[i].loc)
+			(void)tx_goodbye(room_id, X.rw[i].ua);
+	}
+}
+
 static void hi_mesh(void)
 {
 	int i;
 
 	for (i = 0; i < LAN_MAX_PEERS; ++i) {
 		if (X.rw[i].ok && !X.rw[i].loc)
-			(void)tx_hello(X.rw[i].ua);
+			(void)tx_hello(X.rw[i].ua, X.hello_rel_mesh);
 	}
 }
 
@@ -463,9 +602,14 @@ static void rx_disc(uint64_t now)
 			X.adv[j].rm[LAN_ROOM_LEN - 1] = '\0';
 			if (primary) {
 				X.adv[j].from_primary_host = true;
+				X.adv[j].primary_t_ms = now;
 				X.adv[j].src = fr;
 				X.adv[j].gprt = m.port;
 			} else if (!X.adv[j].from_primary_host) {
+				X.adv[j].src = fr;
+				X.adv[j].gprt = m.port;
+			} else if (now > X.adv[j].primary_t_ms + STALE_MS) {
+				X.adv[j].from_primary_host = false;
 				X.adv[j].src = fr;
 				X.adv[j].gprt = m.port;
 			}
@@ -473,7 +617,7 @@ static void rx_disc(uint64_t now)
 	}
 }
 
-static void rx_game(void)
+static void rx_game(uint64_t now)
 {
 	uint8_t b[LAN_FRAME_HEADER_LEN + LAN_FRAME_MAX_PAYLOAD
 			+ LAN_FRAME_CRC_LEN];
@@ -492,6 +636,7 @@ static void rx_game(void)
 			break;
 		if (!lan_frame_decode(b, (size_t)n, &t, &py, &pl))
 			continue;
+
 		if (t == LAN_MSG_HELLO) {
 			LanMsgHello h;
 
@@ -500,7 +645,46 @@ static void rx_game(void)
 			if (h.spec_version != LAN_SPEC_VERSION
 					|| h.room_id != X.room_id)
 				continue;
-			roster_add(h.uuid, fr, h.name);
+			roster_add(h.uuid, fr, h.name, now);
+			if (h.rel_seq == 0)
+				(void)tx_roster(fr);
+			continue;
+		}
+		if (t == LAN_MSG_ROSTER) {
+			LanMsgRoster r;
+			unsigned i;
+
+			if (!lan_dec_roster(py, pl, &r))
+				continue;
+			if (r.spec_version != LAN_SPEC_VERSION
+					|| r.room_id != X.room_id)
+				continue;
+			if (roster_rx_is_dup(&r.sender, r.rel_seq))
+				continue;
+			for (i = 0; i < (unsigned)r.count; ++i) {
+				LanMsgRosterEntry *e = &r.peer[i];
+				LanAddr ua;
+
+				ua.ip = e->ip;
+				ua.port = e->udp_port;
+				roster_add(e->uuid, ua, e->name, now);
+			}
+			if (X.hello_rel_mesh == 0) {
+				X.hello_rel_mesh = 1;
+				hi_mesh();
+			}
+			continue;
+		}
+		if (t == LAN_MSG_GOODBYE) {
+			LanMsgGoodbye g;
+
+			if (!lan_dec_goodbye(py, pl, &g))
+				continue;
+			if (g.spec_version != LAN_SPEC_VERSION
+					|| g.room_id != X.room_id)
+				continue;
+			roster_remove(&g.uuid);
+			continue;
 		}
 	}
 }
@@ -512,6 +696,7 @@ static void lobby_create(void)
 	X.room[LAN_ROOM_LEN - 1] = '\0';
 	X.host_flag = true;
 	roster_local_only();
+	X.hello_rel_mesh = 1;
 	X.wadv = X.wgsp = 0;
 	X.jleft = 0;
 	X.ph = LAN_PARTY_PHASE_LOBBY;
@@ -609,7 +794,8 @@ void lan_party_tick(void)
 	rx_disc(now);
 
 	if (X.ph == LAN_PARTY_PHASE_LOBBY) {
-		rx_game();
+		rx_game(now);
+		roster_hb_evict(now);
 
 		if (now >= X.wadv) {
 			(void)tx_advert();
@@ -620,7 +806,7 @@ void lan_party_tick(void)
 			X.wgsp = now + LAN_HELLO_GOSSIP_MS;
 		}
 		if (X.jleft > 0 && now >= X.jnext) {
-			(void)tx_hello(X.jpeer);
+			(void)tx_hello(X.jpeer, 0);
 			X.jleft--;
 			X.jnext = now + 40;
 		}
@@ -675,7 +861,7 @@ void lan_party_draw(void)
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0, line);
 	y += 28;
 	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0,
-			"Peers (HELLO gossip to mesh):");
+			"Peers (HELLO / ROSTER mesh):");
 	y += 24;
 
 	nt = 0;
@@ -735,6 +921,9 @@ void lan_party_key_down(int kc)
 
 	if (X.ph == LAN_PARTY_PHASE_LOBBY) {
 		if (kc == ALLEGRO_KEY_ESCAPE) {
+			uint64_t rid = X.room_id;
+
+			goodbye_mesh(rid);
 			if (X.host_flag)
 				lan_mdns_unregister();
 			X.ph = LAN_PARTY_PHASE_BROWSE;

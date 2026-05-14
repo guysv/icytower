@@ -5,13 +5,20 @@
  *
  *   off  size  field
  *   0    4     magic        = "ITW1"
- *   4    1     spec_version = 1
+ *   4    1     spec_version (LAN_SPEC_VERSION, must match peer payloads)
  *   5    1     msg_type     (LanMsgType)
  *   6    2     length       (bytes of payload between header and CRC)
  *   8    L     payload
  *   8+L  4     crc32_le     (IEEE polynomial, computed over header+payload)
  *
- * HELLO payload starts with u16 rel_seq (reserved for a future reliability layer).
+ * HELLO: u16 rel_seq (0 = request peer ROSTER; non-zero = mesh update only),
+ * room_id, spec_version, uuid, skin_id, name, feature_flags.
+ * Periodic HELLO mesh gossip doubles as lobby liveness / reachability refresh.
+ *
+ * GOODBYE: room_id, spec_version, uuid.
+ *
+ * ROSTER: u16 rel_seq (per sender, dedupe), room_id, spec_version, sender uuid,
+ * u8 count, then count × (uuid, u32 ip host order, u16 udp port host order, name).
  *
  * This file is intentionally Allegro-free so it can be linked into stand-alone
  * test binaries.
@@ -75,7 +82,7 @@ typedef struct {
 } LanMsgSessionAdvert;
 
 typedef struct {
-	uint16_t rel_seq;
+	uint16_t rel_seq; /* 0: request ROSTER; non-zero: mesh gossip only. */
 	uint64_t room_id;
 	uint16_t spec_version;
 	LanUuid  uuid;
@@ -84,14 +91,40 @@ typedef struct {
 	uint32_t feature_flags;
 } LanMsgHello;
 
+typedef struct {
+	uint64_t room_id;
+	uint16_t spec_version;
+	LanUuid  uuid;
+} LanMsgGoodbye;
+
+typedef struct {
+	LanUuid  uuid;
+	uint32_t ip;    /* host order */
+	uint16_t udp_port;
+	char     name[LAN_NAME_LEN];
+} LanMsgRosterEntry;
+
+typedef struct {
+	uint16_t rel_seq;
+	uint64_t room_id;
+	uint16_t spec_version;
+	LanUuid  sender;
+	uint8_t count;
+	LanMsgRosterEntry peer[LAN_MAX_PEERS];
+} LanMsgRoster;
+
 /* --- Payload encoders/decoders ------------------------------------------ */
 
 size_t lan_enc_session_advert(uint8_t *out, size_t cap,
 		const LanMsgSessionAdvert *m);
 size_t lan_enc_hello(uint8_t *out, size_t cap, const LanMsgHello *m);
+size_t lan_enc_goodbye(uint8_t *out, size_t cap, const LanMsgGoodbye *m);
+size_t lan_enc_roster(uint8_t *out, size_t cap, const LanMsgRoster *m);
 
 bool lan_dec_session_advert(const uint8_t *buf, size_t len,
 		LanMsgSessionAdvert *m);
 bool lan_dec_hello(const uint8_t *buf, size_t len, LanMsgHello *m);
+bool lan_dec_goodbye(const uint8_t *buf, size_t len, LanMsgGoodbye *m);
+bool lan_dec_roster(const uint8_t *buf, size_t len, LanMsgRoster *m);
 
 #endif /* ICYTOWER_LAN_MSG_H */
