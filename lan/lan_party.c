@@ -499,18 +499,6 @@ static void roster_add(LanUuid id, LanAddr ua, const char *nm, uint64_t now_ts)
 	}
 }
 
-static int cmp_row(const void *a, const void *b)
-{
-	const Row *x = a;
-	const Row *y = b;
-
-	if (!x->ok)
-		return 1;
-	if (!y->ok)
-		return -1;
-	return memcmp(x->id.b, y->id.b, LAN_UUID_BYTES);
-}
-
 static LanUuid row_uuid(const Row *r)
 {
 	return r->loc ? X.me : r->id;
@@ -555,19 +543,6 @@ static void sync_senior_mdns(void)
 		lan_mdns_unregister();
 		X.mdns_senior = false;
 	}
-}
-
-static int cmp_row_senior(const void *a, const void *b)
-{
-	const Row *x = a;
-	const Row *y = b;
-	LanUuid ux = row_uuid(x);
-	LanUuid uy = row_uuid(y);
-	int c = seniority_cmp(&ux, &uy);
-
-	if (c)
-		return c;
-	return cmp_row(a, b);
 }
 
 static bool tx_raw(int fd, LanMsgType ty, uint8_t *py, size_t pl,
@@ -1146,8 +1121,6 @@ void lan_party_draw(void)
 	int y = 48;
 	int i;
 	char line[128];
-	Row tmp[LAN_MAX_PEERS];
-	int nt;
 
 	al_clear_to_color(al_map_rgb(0, 0, 0));
 	al_draw_text(font_color, al_map_rgb(220, 220, 120), 12, 12, 0,
@@ -1184,42 +1157,6 @@ void lan_party_draw(void)
 		return;
 
 	draw_game();
-
-	snprintf(line, sizeof line, "Room %016llx   %s  (%s)",
-			(unsigned long long)X.room_id, X.room,
-			X.host_flag ? "hosted" : "joined");
-	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0, line);
-	y += 28;
-	if (!X.host_flag && !X.lobby_level_seeded) {
-		al_draw_text(font_color, al_map_rgb(255, 200, 120), 12, y, 0,
-				"Waiting for host (WELCOME)…");
-		y += 24;
-	}
-	al_draw_text(font_color, al_map_rgb(200, 200, 200), 12, y, 0,
-			"Peers (HELLO / WELCOME mesh):");
-	y += 24;
-
-	nt = 0;
-	for (i = 0; i < LAN_MAX_PEERS; ++i) {
-		if (X.rw[i].ok)
-			tmp[nt++] = X.rw[i];
-	}
-	qsort(tmp, (size_t)nt, sizeof tmp[0], cmp_row_senior);
-	for (i = 0; i < nt; ++i) {
-		char ap[64];
-
-		if (tmp[i].loc) {
-			snprintf(line, sizeof line, "  [LOCAL] %s  udp :%u",
-					tmp[i].nm, (unsigned)X.gport_bound);
-		} else {
-			lan_addr_to_string(tmp[i].ua, ap, sizeof ap);
-			snprintf(line, sizeof line, "  %s  %s",
-					tmp[i].nm, ap);
-		}
-		al_draw_text(font_color, al_map_rgb(255, 255, 255), 16, y, 0,
-				line);
-		y += 22;
-	}
 }
 
 void lan_party_key_down(int kc)
