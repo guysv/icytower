@@ -20,14 +20,22 @@ LDLIBS	:= $(DEFAULT_ALLEG_LIBS)
 endif
 
 ICYTOWER_LAN	?= 0
+ICYTOWER_MDNS	?= 0
 LAN_OBJS	:=
 
 ifeq ($(ICYTOWER_LAN),1)
 CFLAGS	+= -DICYTOWER_LAN=1 -Ilan -I.
 LAN_OBJS := lan/lan_party.o lan/lan_net.o lan/lan_clock.o lan/lan_msg.o lan/lan_mdns.o
-ifeq ($(shell uname -s),Darwin)
+LAN_OS := $(shell uname -s)
+LAN_IS_DARWIN := $(filter Darwin,$(LAN_OS))
+# Bonjour is opt-in: make ICYTOWER_LAN=1 ICYTOWER_MDNS=1 (Darwin only).
+ifeq ($(ICYTOWER_MDNS),1)
+ifeq ($(LAN_IS_DARWIN),Darwin)
 CFLAGS	+= -DICYTOWER_HAVE_MDNS=1
 LDLIBS	+= -ldns_services
+else
+$(warning ICYTOWER_MDNS=1 but Bonjour is Darwin-only; building LAN without mDNS.)
+endif
 endif
 endif
 
@@ -81,15 +89,33 @@ lan-probe:
 ifeq ($(ICYTOWER_LAN),1)
 LAN_TEST_DIR := lan/tests/build
 
-probe-test: $(LAN_TEST_DIR)/lan_loopback_connect $(LAN_TEST_DIR)/lan_pose_roundtrip
+probe-test: $(LAN_TEST_DIR)/lan_loopback_connect $(LAN_TEST_DIR)/lan_pose_roundtrip \
+		$(LAN_TEST_DIR)/lan_ready_roundtrip $(LAN_TEST_DIR)/lan_ready_dup_ack \
+		$(LAN_TEST_DIR)/lan_steady_roundtrip $(LAN_TEST_DIR)/lan_jump_die_roundtrip
 	$(LAN_TEST_DIR)/lan_loopback_connect
 	$(LAN_TEST_DIR)/lan_pose_roundtrip
+	$(LAN_TEST_DIR)/lan_ready_roundtrip
+	$(LAN_TEST_DIR)/lan_ready_dup_ack
+	$(LAN_TEST_DIR)/lan_steady_roundtrip
+	$(LAN_TEST_DIR)/lan_jump_die_roundtrip
 
 $(LAN_TEST_DIR)/lan_loopback_connect: lan/tests/lan_loopback_connect.c lan/lan_msg.c lan/lan_net.c | $(LAN_TEST_DIR)
 	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_loopback_connect.c lan/lan_msg.c lan/lan_net.c
 
 $(LAN_TEST_DIR)/lan_pose_roundtrip: lan/tests/lan_pose_roundtrip.c lan/lan_msg.c | $(LAN_TEST_DIR)
 	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_pose_roundtrip.c lan/lan_msg.c
+
+$(LAN_TEST_DIR)/lan_ready_roundtrip: lan/tests/lan_ready_roundtrip.c lan/lan_msg.c | $(LAN_TEST_DIR)
+	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_ready_roundtrip.c lan/lan_msg.c
+
+$(LAN_TEST_DIR)/lan_ready_dup_ack: lan/tests/lan_ready_dup_ack.c lan/lan_msg.c lan/lan_net.c | $(LAN_TEST_DIR)
+	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_ready_dup_ack.c lan/lan_msg.c lan/lan_net.c
+
+$(LAN_TEST_DIR)/lan_steady_roundtrip: lan/tests/lan_steady_roundtrip.c lan/lan_msg.c | $(LAN_TEST_DIR)
+	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_steady_roundtrip.c lan/lan_msg.c
+
+$(LAN_TEST_DIR)/lan_jump_die_roundtrip: lan/tests/lan_jump_die_roundtrip.c lan/lan_msg.c | $(LAN_TEST_DIR)
+	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_jump_die_roundtrip.c lan/lan_msg.c
 
 $(LAN_TEST_DIR):
 	mkdir -p $@

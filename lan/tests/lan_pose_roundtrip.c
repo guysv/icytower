@@ -26,8 +26,8 @@ int main(void)
 	const uint8_t *pyp;
 	int i;
 
-	if (LAN_SPEC_VERSION < 9u)
-		return fail("LAN_SPEC_VERSION older than POSE client_time_ms");
+	if (LAN_SPEC_VERSION < 12u)
+		return fail("LAN_SPEC_VERSION expected >= 12 (POSE screen_y)");
 
 	memset(&tx, 0, sizeof tx);
 	tx.seq          = 0xdeadbeefu;
@@ -40,6 +40,7 @@ int main(void)
 	tx.dx_fp =  -42500;
 	tx.dy_fp =       0;
 	tx.keys_lr = LAN_POSE_KEY_LEFT_BIT | LAN_POSE_KEY_RIGHT_BIT;
+	tx.screen_y = -42000;
 	tx.client_time_ms = 0x12345678u;
 
 	pl_tx = lan_enc_pose(py, sizeof py, &tx);
@@ -71,6 +72,7 @@ int main(void)
 	if (rx.dx_fp != tx.dx_fp) return fail("dx_fp mismatch");
 	if (rx.dy_fp != tx.dy_fp) return fail("dy_fp mismatch");
 	if (rx.keys_lr != tx.keys_lr) return fail("keys_lr mismatch");
+	if (rx.screen_y != tx.screen_y) return fail("screen_y mismatch");
 	if (rx.client_time_ms != tx.client_time_ms)
 		return fail("client_time_ms mismatch");
 

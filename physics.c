@@ -50,6 +50,30 @@ void init_state(IT_STATE *its, int rejump, unsigned int seed)
 	seed_state(its, seed);
 }
 
+void play_begin_match_keep_pose(IT_STATE *its, unsigned int seed)
+{
+	double sx = its->x, sy = its->y, sdx = its->dx, sdy = its->dy;
+	int status = its->status;
+	int screen_y = its->screen_y;
+	int rj = its->rejump;
+	int rj_jumped = its->rejump_jumped;
+
+	seed_state(its, seed);
+
+	its->x = sx;
+	its->y = sy;
+	its->dx = sdx;
+	its->dy = sdy;
+	its->status = status;
+	its->screen_y = screen_y;
+	its->rejump = rj;
+	its->rejump_jumped = rj_jumped;
+
+	its->speed = its->speed_counter = its->zero_speed_skip = 0;
+	its->combo_timer = its->combo_count = its->combo_floor = 0;
+	its->score = its->floor = its->combo = 0;
+}
+
 int play_lobby_frame(IT_STATE *its, int keys)
 {
 	int prev_x = FTOI(its->x);
@@ -61,7 +85,7 @@ int play_lobby_frame(IT_STATE *its, int keys)
 	return 1;
 }
 
-int play_frame(IT_STATE *its, int keys)
+static int play_frame_impl(IT_STATE *its, int keys, int fail_when_below)
 {
 	int prev_x, prev_y;
 	int screen_move;
@@ -139,7 +163,34 @@ int play_frame(IT_STATE *its, int keys)
 
 	handle_collision(its, prev_x, prev_y);
 
-	return its->y <= 540;
+	if(fail_when_below)
+		return its->y <= 540;
+	return 1;
+}
+
+int play_frame(IT_STATE *its, int keys)
+{
+	return play_frame_impl(its, keys, 1);
+}
+
+/*
+ * Like play_frame, but never signals GAMEOVER for observers when y crosses the
+ * local failure threshold (network puppet extrapolation).
+ */
+int play_frame_peer(IT_STATE *its, int keys)
+{
+	return play_frame_impl(its, keys, 0);
+}
+
+/*
+ * LAN ghost puppet: drift downward without floors/collision/scroll (no new_floor).
+ */
+void play_puppet_ghost_frame(IT_STATE *its)
+{
+	if(its->status == STATUS_IDLE)
+		its->status = STATUS_FLY_DOWN;
+	handle_keys(its, 0);
+	handle_pos(its);
 }
 
 void handle_keys(IT_STATE *its, int keys)

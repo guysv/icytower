@@ -17,6 +17,7 @@
 
 #ifdef ICYTOWER_LAN
 #include "lan/lan_party.h"
+#include "physics.h"
 #endif
 
 IT_STATE it_state;
@@ -89,6 +90,10 @@ void do_tick(void) {
 	int prev_floor = it_state.floor;
 	int prev_combo_timer = it_state.combo_timer;
 	if (!play_frame(&it_state, keys)) {
+#ifdef ICYTOWER_LAN
+		if (lan_party_is_network_game())
+			lan_party_notify_local_death();
+#endif
 		sfx_play_sample(characters[character_index].sfx.death,
 				volume_sfx / 10.0f, ALLEGRO_PLAYMODE_ONCE);
 		sfx_play_sample(sample_gameover, volume_sfx / 10.0f,
@@ -409,6 +414,92 @@ void draw_character(void) {
 	}
 }
 
+#ifdef ICYTOWER_LAN
+static void draw_lobby_ready_marker(double x, double y)
+{
+	const char *sym = "!";
+	int tw = al_get_text_width(font_color, sym);
+
+	al_draw_text(font_color, al_map_rgb(255, 230, 80),
+			(int)(x - tw / 2), (int)(y - 56), 0, sym);
+}
+
+static void draw_network_puppet(double x, double y, double dx, int anim_frame,
+		bool kl, bool kr, uint8_t st)
+{
+	ALLEGRO_BITMAP *character = NULL;
+	int width, height;
+	int flags = 0;
+	bool walk_left = dx < -0.045 || (kl && !kr && dx <= 0.045);
+	bool walk_right = dx > 0.045 || (kr && !kl && dx >= -0.045);
+
+	if (st != STATUS_IDLE) {
+		switch ((int)st) {
+		case STATUS_FLY_UP:
+			character = characters[character_index].gfx.jump1;
+			break;
+		case STATUS_FLY_IDLE:
+			character = characters[character_index].gfx.jump2;
+			break;
+		case STATUS_FLY_DOWN:
+			character = characters[character_index].gfx.jump3;
+			break;
+		default:
+			character = characters[character_index].gfx.jump;
+			break;
+		}
+		width = al_get_bitmap_width(character);
+		height = al_get_bitmap_height(character);
+		if (dx < -0.045)
+			flags = ALLEGRO_FLIP_HORIZONTAL;
+		al_draw_bitmap(character,
+				(int)(x - width / 2 + 1),
+				(int)(y - height + 1),
+				flags);
+		return;
+	}
+
+	if (walk_left || walk_right) {
+		switch ((anim_frame / 10) % 4) {
+		case 0:
+			character = characters[character_index].gfx.walk1;
+			break;
+		case 1:
+			character = characters[character_index].gfx.walk2;
+			break;
+		case 2:
+			character = characters[character_index].gfx.walk3;
+			break;
+		case 3:
+			character = characters[character_index].gfx.walk4;
+			break;
+		}
+		if (walk_left)
+			flags = ALLEGRO_FLIP_HORIZONTAL;
+	} else {
+		switch ((anim_frame / 13) % 4) {
+		case 0:
+		case 2:
+			character = characters[character_index].gfx.idle1;
+			break;
+		case 1:
+			character = characters[character_index].gfx.idle2;
+			break;
+		case 3:
+			character = characters[character_index].gfx.idle3;
+			break;
+		}
+	}
+
+	width = al_get_bitmap_width(character);
+	height = al_get_bitmap_height(character);
+	al_draw_bitmap(character,
+			(int)(x - width / 2 + 1),
+			(int)(y - height + 1),
+			flags);
+}
+#endif
+
 void draw_lobby_avatar(double x, double y, double dx, int anim_frame,
 		bool walking_left_held, bool walking_right_held)
 {
@@ -505,18 +596,36 @@ void draw_game(void) {
 	draw_floors();
 	combo_trail_draw((unsigned)animation_frame);
 #ifdef ICYTOWER_LAN
-	if (game_state == LAN_PARTY_LOBBY) {
+	if (game_state == LAN_PARTY_LOBBY
+			|| (lan_party_is_network_game()
+				&& (game_state == PLAYING || game_state == GAMEOVER))) {
 		const LanLobbyRemote *rem = NULL;
 		size_t n = lan_party_lobby_remotes(&rem);
 		size_t i;
 
-		for (i = 0; i < n; ++i)
-			draw_lobby_avatar(rem[i].x, rem[i].y, rem[i].dx,
-					rem[i].anim_frame,
-					rem[i].key_left, rem[i].key_right);
+		for (i = 0; i < n; ++i) {
+			double view_y = rem[i].y - (double)rem[i].screen_y
+					+ (double)it_state.screen_y;
+
+			if (game_state == PLAYING)
+				draw_network_puppet(rem[i].x, view_y, rem[i].dx,
+						rem[i].anim_frame,
+						rem[i].key_left, rem[i].key_right,
+						rem[i].phys_status);
+			else
+				draw_lobby_avatar(rem[i].x, view_y, rem[i].dx,
+						rem[i].anim_frame,
+						rem[i].key_left, rem[i].key_right);
+			if (game_state == LAN_PARTY_LOBBY && rem[i].ready)
+				draw_lobby_ready_marker(rem[i].x, view_y);
+		}
 	}
 #endif
 	draw_character();
+#ifdef ICYTOWER_LAN
+	if (game_state == LAN_PARTY_LOBBY && lan_party_lobby_local_ready_marker())
+		draw_lobby_ready_marker(it_state.x, it_state.y);
+#endif
 	draw_walls();
 	draw_hud();
 }

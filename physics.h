@@ -41,7 +41,14 @@ typedef struct {
 void init_empty_state(IT_STATE *its, int rejump);
 void seed_state(IT_STATE *its, unsigned int seed);
 void init_state(IT_STATE *its, int rejump, unsigned int seed);
+/*
+ * Regenerate tower floors from seed for competitive play while keeping the
+ * current avatar kinematics from lobby; resets score/combo/speed tempo fields.
+ */
+void play_begin_match_keep_pose(IT_STATE *its, unsigned int seed);
 int play_frame(IT_STATE *its, int keys);
+int play_frame_peer(IT_STATE *its, int keys);
+void play_puppet_ghost_frame(IT_STATE *its);
 /*
  * Lobby physics: horizontal movement and ground collision only, no scroll, no
  * new floors, no combo/score updates. Jump key is forced off. Always returns

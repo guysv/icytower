@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 extern enum GAME_STATE {
 	TITLE, INSTRUCTIONS, PLAYING, PAUSE, ESCAPE, GAMEOVER, ENTER_INITIALS,
 			EXIT
@@ -7,4 +9,5 @@ extern enum GAME_STATE {
 } game_state;
 
 void start_game(void);
+void start_game_with_seed(uint32_t level_seed);
 void icytower_sync_game_speed(void);

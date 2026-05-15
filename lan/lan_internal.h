@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LAN_SPEC_VERSION            9u
+#define LAN_SPEC_VERSION            12u
 
 #define LAN_DEFAULT_PORT            51812u /* discovery + legacy default */
 #define LAN_MULTICAST_GROUP         "239.43.137.251"
@@ -20,7 +20,7 @@
 #define LAN_PEERS_ENV               "ICYTOWER_LAN_PEERS"
 #define LAN_NAME_ENV                "ICYTOWER_LAN_NAME"
 
-/* Bonjour / DNS-SD (see lan_mdns.c). */
+/* Bonjour / DNS-SD only with Makefile ICYTOWER_MDNS=1 (Darwin: ICYTOWER_HAVE_MDNS); see lan_mdns.c. */
 #define LAN_MDNS_REGTYPE            "_icytower._udp"
 
 #define LAN_MAX_PEERS               8
@@ -35,6 +35,16 @@
 /* Evict lobby peers absent this many gossip periods (~LAN_HELLO_GOSSIP_MS each). */
 #define LAN_PRESENCE_MISS_CAP       8u
 
+#define LAN_READY_RETRY_MS          100u
+#define LAN_READY_MAX_TRIES         20u
+
+#define LAN_STEADY_INITIAL_MS       3000u
+#define LAN_STEADY_RETRY_MS         100u
+#define LAN_STEADY_MAX_TRIES        20u
+
+#define LAN_DIE_RETRY_MS            100u
+#define LAN_DIE_MAX_TRIES           20u
+
 #define LAN_FRAME_MAGIC0            'I'
 #define LAN_FRAME_MAGIC1            'T'
 #define LAN_FRAME_MAGIC2            'W'
@@ -48,13 +58,21 @@ typedef enum {
 	LAN_MSG_HELLO               = 0x01,
 	LAN_MSG_GOODBYE             = 0x02,
 	LAN_MSG_WELCOME             = 0x03,
-	LAN_MSG_POSE                = 0x04
+	LAN_MSG_POSE                = 0x04,
+	LAN_MSG_READY               = 0x05,
+	LAN_MSG_READY_ACK           = 0x06,
+	LAN_MSG_STEADY              = 0x07,
+	LAN_MSG_STEADY_ACK          = 0x08,
+	LAN_MSG_JUMP                = 0x09,
+	LAN_MSG_DIE                 = 0x0a,
+	LAN_MSG_DIE_ACK             = 0x0b
 } LanMsgType;
 
 typedef enum {
 	LAN_PARTY_PHASE_NONE       = 0,
 	LAN_PARTY_PHASE_BROWSE     = 1,
-	LAN_PARTY_PHASE_LOBBY      = 2
+	LAN_PARTY_PHASE_LOBBY      = 2,
+	LAN_PARTY_PHASE_GAME       = 3
 } LanPartyPhase;
 
 typedef struct {

@@ -106,6 +106,17 @@ void start_game(void) {
 			volume_sfx / 10.0f, ALLEGRO_PLAYMODE_ONCE);
 }
 
+void start_game_with_seed(uint32_t level_seed)
+{
+	sfx_bgm_stop_menu();
+	sfx_bgm_play_character(character_index);
+	play_begin_match_keep_pose(&it_state, level_seed);
+	game_reset_for_lobby_preview();
+	draw_game();
+	sfx_play_sample(characters[character_index].sfx.greeting,
+			volume_sfx / 10.0f, ALLEGRO_PLAYMODE_ONCE);
+}
+
 void pause_game(void) {
 	sfx_play_sample(characters[character_index].sfx.pause,
 			volume_sfx / 10.0f, ALLEGRO_PLAYMODE_ONCE);
@@ -209,7 +220,8 @@ int main() {
 #ifdef ICYTOWER_LAN
 		bool lan_party_active =
 				game_state == LAN_PARTY_BROWSE
-				|| game_state == LAN_PARTY_LOBBY;
+				|| game_state == LAN_PARTY_LOBBY
+				|| lan_party_is_network_game();
 
 		if (lan_party_active) {
 			ALLEGRO_TIMEOUT to;
@@ -265,9 +277,31 @@ int main() {
 				break;
 #endif
 			case PLAYING:
+#ifdef ICYTOWER_LAN
+				/*
+				 * DISPLAY_SWITCH_OUT sets paused; multiplayer must keep
+				 * sending/receiving POSE and puppet ticks anyway.
+				 */
+				if (lan_party_is_network_game())
+					lan_party_tick();
+				if (!paused || lan_party_is_network_game())
+					do_tick();
+#else
 				if (!paused)
 					do_tick();
+#endif
 				break;
+#ifdef ICYTOWER_LAN
+			case PAUSE:
+			case ESCAPE:
+				if (lan_party_is_network_game())
+					lan_party_tick();
+				break;
+			case GAMEOVER:
+				if (lan_party_is_network_game())
+					lan_party_tick();
+				break;
+#endif
 			case EXIT:
 				game_running = false;
 				break;
@@ -286,7 +320,9 @@ int main() {
 				break;
 			case LAN_PARTY_LOBBY:
 				lan_party_key_down(event.keyboard.keycode);
-				if (event.keyboard.keycode == key_left)
+				if (event.keyboard.keycode == ALLEGRO_KEY_SPACE)
+					lan_party_ready_commit(true);
+				else if (event.keyboard.keycode == key_left)
 					press_left();
 				else if (event.keyboard.keycode == key_right)
 					press_right();
