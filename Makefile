@@ -60,12 +60,15 @@ characters.o: characters.c characters.h gfx.h sfx.h
 floor_types.o: floor_types.c floor_types.h gfx.h
 fullscreen.o: fullscreen.c fullscreen.h
 game.o: game.c game.h icytower.h gfx.h sfx.h options.h characters.h floor_types.h physics.h highscores.h combo_trail.h
+ifeq ($(ICYTOWER_LAN),1)
+game.o: lan/lan_party.h
+endif
 physics.o: physics.c physics.h
 highscores.o: highscores.c highscores.h options.h
 combo_trail.o: combo_trail.c combo_trail.h gfx.h options.h physics.h
 
 ifeq ($(ICYTOWER_LAN),1)
-lan/lan_party.o: lan/lan_party.c lan/lan_party.h lan/lan_internal.h lan/lan_msg.h lan/lan_mdns.h lan/lan_net.h lan/lan_clock.h icytower.h gfx.h fullscreen.h game.h options.h
+lan/lan_party.o: lan/lan_party.c lan/lan_party.h lan/lan_internal.h lan/lan_msg.h lan/lan_mdns.h lan/lan_net.h lan/lan_clock.h icytower.h gfx.h fullscreen.h game.h options.h physics.h
 lan/lan_net.o: lan/lan_net.c lan/lan_net.h lan/lan_internal.h
 lan/lan_clock.o: lan/lan_clock.c lan/lan_clock.h
 lan/lan_msg.o: lan/lan_msg.c lan/lan_msg.h lan/lan_internal.h
@@ -78,11 +81,15 @@ lan-probe:
 ifeq ($(ICYTOWER_LAN),1)
 LAN_TEST_DIR := lan/tests/build
 
-probe-test: $(LAN_TEST_DIR)/lan_loopback_connect
+probe-test: $(LAN_TEST_DIR)/lan_loopback_connect $(LAN_TEST_DIR)/lan_lobby_pose_roundtrip
 	$(LAN_TEST_DIR)/lan_loopback_connect
+	$(LAN_TEST_DIR)/lan_lobby_pose_roundtrip
 
 $(LAN_TEST_DIR)/lan_loopback_connect: lan/tests/lan_loopback_connect.c lan/lan_msg.c lan/lan_net.c | $(LAN_TEST_DIR)
 	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_loopback_connect.c lan/lan_msg.c lan/lan_net.c
+
+$(LAN_TEST_DIR)/lan_lobby_pose_roundtrip: lan/tests/lan_lobby_pose_roundtrip.c lan/lan_msg.c | $(LAN_TEST_DIR)
+	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_lobby_pose_roundtrip.c lan/lan_msg.c
 
 $(LAN_TEST_DIR):
 	mkdir -p $@

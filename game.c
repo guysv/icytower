@@ -15,6 +15,10 @@
 #include "highscores.h"
 #include "combo_trail.h"
 
+#ifdef ICYTOWER_LAN
+#include "lan/lan_party.h"
+#endif
+
 IT_STATE it_state;
 int keys;
 
@@ -47,12 +51,38 @@ void game_reset_for_lobby_preview(void)
 	combo_trail_init();
 }
 
+int game_current_keys(void)
+{
+	return keys;
+}
+
 void press_left(void) { keys |= KEY_LEFT; }
 void press_right(void) { keys |= KEY_RIGHT; }
 void press_jump(void) { keys |= KEY_JUMP; }
 void release_left(void) { keys &= ~KEY_LEFT; }
 void release_right(void) { keys &= ~KEY_RIGHT; }
 void release_jump(void) { keys &= ~KEY_JUMP; }
+
+void game_lobby_tick(int keys_in)
+{
+	(void)play_lobby_frame(&it_state, keys_in);
+
+	if (it_state.dx > 0.045) {
+		if (animation != ANIMATION_WALK_RIGHT) {
+			animation = ANIMATION_WALK_RIGHT;
+			animation_frame = 0;
+		}
+	} else if (it_state.dx < -0.045) {
+		if (animation != ANIMATION_WALK_LEFT) {
+			animation = ANIMATION_WALK_LEFT;
+			animation_frame = 0;
+		}
+	} else if (animation != ANIMATION_IDLE) {
+		animation = ANIMATION_IDLE;
+		animation_frame = 0;
+	}
+	++animation_frame;
+}
 
 void do_tick(void) {
 	int prev_status = it_state.status;
@@ -379,6 +409,54 @@ void draw_character(void) {
 	}
 }
 
+void draw_lobby_avatar(double x, double y, double dx, int anim_frame,
+		bool walking_left_held, bool walking_right_held)
+{
+	ALLEGRO_BITMAP *character = NULL;
+	int width, height;
+	int flags = 0;
+	bool walk_left = dx < -0.045 || (walking_left_held && !walking_right_held
+			&& dx <= 0.045);
+	bool walk_right = dx > 0.045 || (walking_right_held && !walking_left_held
+			&& dx >= -0.045);
+
+	if (walk_left || walk_right) {
+		switch ((anim_frame / 10) % 4) {
+		case 0:
+			character = characters[character_index].gfx.walk1;
+			break;
+		case 1:
+			character = characters[character_index].gfx.walk2;
+			break;
+		case 2:
+			character = characters[character_index].gfx.walk3;
+			break;
+		case 3:
+			character = characters[character_index].gfx.walk4;
+			break;
+		}
+		if (walk_left)
+			flags = ALLEGRO_FLIP_HORIZONTAL;
+	} else {
+		switch ((anim_frame / 13) % 4) {
+		case 0:
+		case 2:
+			character = characters[character_index].gfx.idle1;
+			break;
+		case 1:
+			character = characters[character_index].gfx.idle2;
+			break;
+		case 3:
+			character = characters[character_index].gfx.idle3;
+			break;
+		}
+	}
+
+	width = al_get_bitmap_width(character);
+	height = al_get_bitmap_height(character);
+	al_draw_bitmap(character, x - width / 2 + 1, y - height + 1, flags);
+}
+
 void draw_walls(void) {
 	int y = -((80 - it_state.screen_y % 80) % 80) * 1.55;
 	for (; y < 480; y += 124) {
@@ -426,6 +504,18 @@ void draw_game(void) {
 	draw_background();
 	draw_floors();
 	combo_trail_draw((unsigned)animation_frame);
+#ifdef ICYTOWER_LAN
+	if (game_state == LAN_PARTY_LOBBY) {
+		const LanLobbyRemote *rem = NULL;
+		size_t n = lan_party_lobby_remotes(&rem);
+		size_t i;
+
+		for (i = 0; i < n; ++i)
+			draw_lobby_avatar(rem[i].x, rem[i].y, rem[i].dx,
+					rem[i].anim_frame,
+					rem[i].key_left, rem[i].key_right);
+	}
+#endif
 	draw_character();
 	draw_walls();
 	draw_hud();

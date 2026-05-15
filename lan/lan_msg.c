@@ -318,3 +318,41 @@ bool lan_dec_welcome(const uint8_t *buf, size_t len, LanMsgWelcome *m)
 	}
 	return ok && p == end;
 }
+
+size_t lan_enc_lobby_pose(uint8_t *out, size_t cap, const LanMsgLobbyPose *m)
+{
+	uint8_t *p = out;
+
+	if (cap < 4u + 8u + 2u + LAN_UUID_BYTES + 4u * 4u + 1u + 4u)
+		return 0;
+	lan_w_u32(&p, m->seq);
+	lan_w_u64(&p, m->room_id);
+	lan_w_u16(&p, m->spec_version);
+	lan_w_bytes(&p, m->sender.b, LAN_UUID_BYTES);
+	lan_w_u32(&p, (uint32_t)m->x_fp);
+	lan_w_u32(&p, (uint32_t)m->y_fp);
+	lan_w_u32(&p, (uint32_t)m->dx_fp);
+	lan_w_u32(&p, (uint32_t)m->dy_fp);
+	lan_w_u8(&p, m->keys_lr);
+	lan_w_u32(&p, m->client_time_ms);
+	return (size_t)(p - out);
+}
+
+bool lan_dec_lobby_pose(const uint8_t *buf, size_t len, LanMsgLobbyPose *m)
+{
+	bool ok = true;
+	const uint8_t *p = buf, *end = buf + len;
+
+	memset(m, 0, sizeof *m);
+	m->seq          = lan_r_u32(&p, end, &ok);
+	m->room_id      = lan_r_u64(&p, end, &ok);
+	m->spec_version = lan_r_u16(&p, end, &ok);
+	lan_r_bytes(&p, end, m->sender.b, LAN_UUID_BYTES, &ok);
+	m->x_fp         = (int32_t)lan_r_u32(&p, end, &ok);
+	m->y_fp         = (int32_t)lan_r_u32(&p, end, &ok);
+	m->dx_fp        = (int32_t)lan_r_u32(&p, end, &ok);
+	m->dy_fp        = (int32_t)lan_r_u32(&p, end, &ok);
+	m->keys_lr      = lan_r_u8(&p, end);
+	m->client_time_ms = lan_r_u32(&p, end, &ok);
+	return ok && p == end;
+}

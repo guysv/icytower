@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -27,6 +28,7 @@
 #include "game.h"
 #include "icytower.h"
 #include "options.h"
+#include "physics.h"
 
 #include "lan_clock.h"
 #include "lan_internal.h"
@@ -36,6 +38,7 @@
 
 #define ADV_CAP      24
 #define STALE_MS     6200ull
+#define LAN_LOBBY_POSE_PERIOD_MS 50u
 
 typedef struct {
 	bool        ok;
@@ -56,6 +59,18 @@ typedef struct {
 	char        nm[LAN_NAME_LEN];
 	uint64_t    last_hb_ms;
 } Row;
+
+typedef struct {
+	bool     ok;
+	LanUuid  id;
+	bool     have_seq;
+	uint32_t last_seq;
+	bool     clock_known;
+	uint32_t clock_offset;
+	uint8_t  keys_lr;
+	int      anim_frame;
+	IT_STATE it;
+} LobbyRemoteSlot;
 
 typedef struct {
 	bool        net;
@@ -84,6 +99,13 @@ typedef struct {
 	bool        rrx_use[LAN_MAX_PEERS];
 	LanUuid     rrx_id[LAN_MAX_PEERS];
 	uint16_t    rrx_seq[LAN_MAX_PEERS];
+
+	LobbyRemoteSlot pose[LAN_MAX_PEERS];
+	LanLobbyRemote  pose_view[LAN_MAX_PEERS];
+	uint32_t    pose_tx_seq;
+	uint64_t    wpose;
+	uint8_t     last_tx_keys_lr;
+	bool        last_tx_keys_valid;
 
 	uint16_t    welcome_tx_seq;
 	uint16_t    hello_rel_mesh;
@@ -295,6 +317,69 @@ static void refresh_browse(uint64_t now)
 		X.cursor = 0;
 }
 
+static void pose_clear_all(void)
+{
+	memset(X.pose, 0, sizeof X.pose);
+	X.pose_tx_seq = 0;
+	X.wpose = 0;
+	X.last_tx_keys_valid = false;
+}
+
+static void pose_drop(const LanUuid *id)
+{
+	int i;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (X.pose[i].ok && memcmp(X.pose[i].id.b, id->b,
+				LAN_UUID_BYTES) == 0) {
+			memset(&X.pose[i], 0, sizeof X.pose[i]);
+			return;
+		}
+	}
+}
+
+static uint32_t puppet_room_seed(void)
+{
+	if (X.host_flag)
+		return X.level_seed;
+	if (X.lobby_level_seeded)
+		return X.level_seed;
+	return 0u;
+}
+
+static void puppet_init_fresh(LobbyRemoteSlot *s)
+{
+	init_state(&s->it, rejump, puppet_room_seed());
+	s->it.dx = 0;
+	s->it.dy = 0;
+	s->it.status = STATUS_IDLE;
+	s->keys_lr = 0;
+	s->clock_known = false;
+	s->clock_offset = 0;
+	s->anim_frame = 0;
+}
+
+static void puppets_reseed(uint32_t seed)
+{
+	int i;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (X.pose[i].ok)
+			seed_state(&X.pose[i].it, seed);
+	}
+}
+
+static uint8_t keys_to_lr(int keys)
+{
+	uint8_t u = 0;
+
+	if (keys & KEY_LEFT)
+		u |= LAN_POSE_KEY_LEFT_BIT;
+	if (keys & KEY_RIGHT)
+		u |= LAN_POSE_KEY_RIGHT_BIT;
+	return u;
+}
+
 static void roster_local_only(void)
 {
 	int i;
@@ -313,6 +398,7 @@ static void roster_local_only(void)
 	X.rw[0].ua.port = X.gport_bound;
 	X.welcome_tx_seq = 0;
 	X.hello_rel_mesh = 0;
+	pose_clear_all();
 }
 
 static void roster_remove(const LanUuid *id)
@@ -330,6 +416,7 @@ static void roster_remove(const LanUuid *id)
 							LAN_UUID_BYTES) == 0)
 					X.rrx_use[k] = false;
 			}
+			pose_drop(id);
 			return;
 		}
 	}
@@ -584,6 +671,154 @@ static bool tx_welcome(LanAddr to)
 	return z && tx_raw(X.gfd, LAN_MSG_WELCOME, py, z, to);
 }
 
+static bool tx_lobby_pose_one(LanAddr to, const LanMsgLobbyPose *m)
+{
+	uint8_t py[64];
+	size_t z = lan_enc_lobby_pose(py, sizeof py, m);
+
+	return z && tx_raw(X.gfd, LAN_MSG_LOBBY_POSE, py, z, to);
+}
+
+static void tx_lobby_pose_mesh(uint64_t now)
+{
+	LanMsgLobbyPose m;
+	int local_keys;
+	int i;
+
+	if (X.ph != LAN_PARTY_PHASE_LOBBY)
+		return;
+
+	X.pose_tx_seq++;
+	local_keys = game_current_keys();
+
+	memset(&m, 0, sizeof m);
+	m.seq          = X.pose_tx_seq;
+	m.room_id      = X.room_id;
+	m.spec_version = LAN_SPEC_VERSION;
+	m.sender       = X.me;
+	m.client_time_ms = (uint32_t)now;
+	m.x_fp  = (int32_t)(it_state.x  * (double)LAN_POSE_FIXED_SCALE);
+	m.y_fp  = (int32_t)(it_state.y  * (double)LAN_POSE_FIXED_SCALE);
+	m.dx_fp = (int32_t)(it_state.dx * (double)LAN_POSE_FIXED_SCALE);
+	m.dy_fp = (int32_t)(it_state.dy * (double)LAN_POSE_FIXED_SCALE);
+	if (local_keys & KEY_LEFT)
+		m.keys_lr |= LAN_POSE_KEY_LEFT_BIT;
+	if (local_keys & KEY_RIGHT)
+		m.keys_lr |= LAN_POSE_KEY_RIGHT_BIT;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (X.rw[i].ok && !X.rw[i].loc)
+			(void)tx_lobby_pose_one(X.rw[i].ua, &m);
+	}
+}
+
+static void pose_apply(const LanMsgLobbyPose *m, uint64_t now)
+{
+	int i, slot = -1, free_slot = -1;
+	double scale = (double)LAN_POSE_FIXED_SCALE;
+	bool newborn;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (!X.pose[i].ok) {
+			if (free_slot < 0)
+				free_slot = i;
+			continue;
+		}
+		if (memcmp(X.pose[i].id.b, m->sender.b, LAN_UUID_BYTES) == 0) {
+			slot = i;
+			break;
+		}
+	}
+	if (slot < 0) {
+		if (free_slot < 0)
+			return;
+		slot = free_slot;
+		memset(&X.pose[slot], 0, sizeof X.pose[slot]);
+		X.pose[slot].ok = true;
+		X.pose[slot].id = m->sender;
+		X.pose[slot].have_seq = false;
+	}
+
+	newborn = !X.pose[slot].have_seq;
+
+	if (X.pose[slot].have_seq) {
+		uint32_t last = X.pose[slot].last_seq;
+		uint32_t cur = m->seq;
+		uint32_t delta = cur - last;
+
+		if (delta == 0u || delta > 0x80000000u)
+			return;
+	}
+
+	X.pose[slot].last_seq = m->seq;
+	X.pose[slot].have_seq = true;
+
+	if (newborn)
+		puppet_init_fresh(&X.pose[slot]);
+
+	{
+		uint32_t now32 = (uint32_t)now;
+		int64_t adv;
+		unsigned t, ticks_to_replay;
+		IT_STATE tmp;
+		int k = 0;
+		double dx_err, dy_err;
+
+		if (!X.pose[slot].clock_known) {
+			X.pose[slot].clock_offset = now32 - m->client_time_ms;
+			X.pose[slot].clock_known = true;
+		}
+		adv = (int64_t)now32 - (int64_t)m->client_time_ms
+				- (int64_t)X.pose[slot].clock_offset;
+		if (adv < 0)
+			adv = 0;
+		if (adv > 200)
+			adv = 200;
+		ticks_to_replay = (unsigned)(adv / 20);
+
+		X.pose[slot].keys_lr = m->keys_lr;
+		tmp = X.pose[slot].it;
+		tmp.x = (double)m->x_fp / scale;
+		tmp.y = (double)m->y_fp / scale;
+		tmp.dx = (double)m->dx_fp / scale;
+		tmp.dy = (double)m->dy_fp / scale;
+		if (m->keys_lr & LAN_POSE_KEY_LEFT_BIT)
+			k |= KEY_LEFT;
+		if (m->keys_lr & LAN_POSE_KEY_RIGHT_BIT)
+			k |= KEY_RIGHT;
+		for (t = 0; t < ticks_to_replay; ++t)
+			play_lobby_frame(&tmp, k);
+
+		dx_err = tmp.x - X.pose[slot].it.x;
+		dy_err = tmp.y - X.pose[slot].it.y;
+		if (fabs(dx_err) > 40.0 || fabs(dy_err) > 40.0)
+			X.pose[slot].it = tmp;
+		else {
+			X.pose[slot].it.x += dx_err * 0.30;
+			X.pose[slot].it.y += dy_err * 0.30;
+			X.pose[slot].it.dx = tmp.dx;
+			X.pose[slot].it.dy = tmp.dy;
+		}
+	}
+}
+
+static void puppets_tick(void)
+{
+	int i, k;
+
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (!X.pose[i].ok)
+			continue;
+		k = 0;
+		if (X.pose[i].keys_lr & LAN_POSE_KEY_LEFT_BIT)
+			k |= KEY_LEFT;
+		if (X.pose[i].keys_lr & LAN_POSE_KEY_RIGHT_BIT)
+			k |= KEY_RIGHT;
+		play_lobby_frame(&X.pose[i].it, k);
+		X.pose[i].anim_frame++;
+	}
+}
+
 static void goodbye_mesh(uint64_t room_id)
 {
 	int i;
@@ -710,6 +945,7 @@ static void rx_game(uint64_t now)
 				X.level_seed = r.level_seed;
 				if (!X.lobby_level_seeded) {
 					seed_state(&it_state, r.level_seed);
+					puppets_reseed(r.level_seed);
 					X.lobby_level_seeded = true;
 				}
 			}
@@ -736,6 +972,19 @@ static void rx_game(uint64_t now)
 					|| g.room_id != X.room_id)
 				continue;
 			roster_remove(&g.uuid);
+			continue;
+		}
+		if (t == LAN_MSG_LOBBY_POSE) {
+			LanMsgLobbyPose p;
+
+			if (!lan_dec_lobby_pose(py, pl, &p))
+				continue;
+			if (p.spec_version != LAN_SPEC_VERSION
+					|| p.room_id != X.room_id)
+				continue;
+			if (memcmp(p.sender.b, X.me.b, LAN_UUID_BYTES) == 0)
+				continue;
+			pose_apply(&p, now);
 			continue;
 		}
 	}
@@ -779,7 +1028,7 @@ static void lobby_join(int ord_idx)
 	X.wadv = X.wgsp = 0;
 	X.ph = LAN_PARTY_PHASE_LOBBY;
 	game_state = LAN_PARTY_LOBBY;
-	init_empty_state(&it_state, rejump);
+	init_state(&it_state, rejump, 0);
 	game_reset_for_lobby_preview();
 	X.lobby_level_seeded = false;
 	lan_mdns_browse_stop();
@@ -856,6 +1105,13 @@ void lan_party_tick(void)
 
 		sync_senior_mdns();
 
+		/*
+		 * Local-authority lobby physics + puppet simulation (see pose_apply
+		 * reconcile + puppets_tick).
+		 */
+		game_lobby_tick(game_current_keys());
+		puppets_tick();
+
 		if (now >= X.wadv) {
 			if (i_am_senior_survivor())
 				(void)tx_advert();
@@ -869,6 +1125,18 @@ void lan_party_tick(void)
 			(void)tx_hello(X.jpeer, 0);
 			X.jleft--;
 			X.jnext = now + 40;
+		}
+		{
+			uint8_t cur_lr = keys_to_lr(game_current_keys());
+			bool keys_edge = !X.last_tx_keys_valid
+					|| cur_lr != X.last_tx_keys_lr;
+
+			if (keys_edge || now >= X.wpose) {
+				tx_lobby_pose_mesh(now);
+				X.last_tx_keys_lr = cur_lr;
+				X.last_tx_keys_valid = true;
+				X.wpose = now + LAN_LOBBY_POSE_PERIOD_MS;
+			}
 		}
 	}
 }
@@ -1005,4 +1273,34 @@ void lan_party_key_down(int kc)
 void lan_party_key_up(int kc)
 {
 	(void)kc;
+}
+
+size_t lan_party_lobby_remotes(const LanLobbyRemote **out)
+{
+	size_t n = 0;
+	int i;
+
+	if (X.ph != LAN_PARTY_PHASE_LOBBY) {
+		if (out)
+			*out = NULL;
+		return 0;
+	}
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (!X.pose[i].ok || !X.pose[i].have_seq)
+			continue;
+		X.pose_view[n].uuid       = X.pose[i].id;
+		X.pose_view[n].x          = X.pose[i].it.x;
+		X.pose_view[n].y          = X.pose[i].it.y;
+		X.pose_view[n].dx         = X.pose[i].it.dx;
+		X.pose_view[n].dy         = X.pose[i].it.dy;
+		X.pose_view[n].key_left   = (X.pose[i].keys_lr
+				& LAN_POSE_KEY_LEFT_BIT) != 0u;
+		X.pose_view[n].key_right  = (X.pose[i].keys_lr
+				& LAN_POSE_KEY_RIGHT_BIT) != 0u;
+		X.pose_view[n].anim_frame = X.pose[i].anim_frame;
+		n++;
+	}
+	if (out)
+		*out = X.pose_view;
+	return n;
 }

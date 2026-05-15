@@ -282,8 +282,16 @@ int main() {
 			switch (game_state) {
 #ifdef ICYTOWER_LAN
 			case LAN_PARTY_BROWSE:
+				lan_party_key_down(event.keyboard.keycode);
+				break;
 			case LAN_PARTY_LOBBY:
 				lan_party_key_down(event.keyboard.keycode);
+				if (event.keyboard.keycode == key_left)
+					press_left();
+				else if (event.keyboard.keycode == key_right)
+					press_right();
+				else if (event.keyboard.keycode == key_jump)
+					press_jump();
 				break;
 #endif
 			case TITLE:
@@ -443,10 +451,17 @@ int main() {
 			break;
 		case ALLEGRO_EVENT_KEY_UP:
 #ifdef ICYTOWER_LAN
-			if (game_state == LAN_PARTY_BROWSE
-					|| game_state == LAN_PARTY_LOBBY)
+			if (game_state == LAN_PARTY_BROWSE)
 				lan_party_key_up(event.keyboard.keycode);
-			else if (game_state == PLAYING) {
+			else if (game_state == LAN_PARTY_LOBBY) {
+				lan_party_key_up(event.keyboard.keycode);
+				if (event.keyboard.keycode == key_left)
+					release_left();
+				else if (event.keyboard.keycode == key_right)
+					release_right();
+				else if (event.keyboard.keycode == key_jump)
+					release_jump();
+			} else if (game_state == PLAYING) {
 #else
 			if (game_state == PLAYING) {
 #endif

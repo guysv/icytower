@@ -25,6 +25,17 @@
  * emitted only by the senior surviving peer — lexicographically smallest peer
  * UUID in the roster (local row counts as X.me).
  *
+ * LOBBY_POSE: u32 seq (per sender, monotonic; receivers drop seq <= last seen),
+ * room_id, spec_version, sender uuid, then sender kinematics as fixed-point
+ * (i32 scaled by LAN_POSE_FIXED_SCALE = 10000): x, y, dx, dy. A trailing u8
+ * keys_lr carries bit0=KEY_LEFT, bit1=KEY_RIGHT for cheap extrapolation.
+ * u32 client_time_ms (sender wall clock, arbitrary origin; receivers estimate
+ * offset on first packet) is used to replay play_lobby_frame forward by stale
+ * age before snap/lerp reconcile.
+ * Each peer is authoritative for its own avatar; LOBBY_POSE is fan-out
+ * unicast over the game socket at LAN_LOBBY_POSE_PERIOD_MS or immediately on
+ * keys_lr edges while a peer roams floor 0 with jump disabled.
+ *
  * This file is intentionally Allegro-free so it can be linked into stand-alone
  * test binaries.
  */
@@ -117,6 +128,30 @@ typedef struct {
 	LanMsgRosterEntry peer[LAN_MAX_PEERS];
 } LanMsgWelcome;
 
+/*
+ * Fixed-point scale for LOBBY_POSE kinematics. IT_STATE.{x,y,dx,dy} are doubles
+ * that comfortably fit i32/scale = +/- ~214748 in world units; the play field
+ * stays well inside that. Keeping the wire integer keeps the encoder
+ * Allegro-free and CRC-stable across host endianness.
+ */
+#define LAN_POSE_FIXED_SCALE   10000
+
+#define LAN_POSE_KEY_LEFT_BIT  0x01u
+#define LAN_POSE_KEY_RIGHT_BIT 0x02u
+
+typedef struct {
+	uint32_t seq;
+	uint64_t room_id;
+	uint16_t spec_version;
+	LanUuid  sender;
+	int32_t  x_fp;
+	int32_t  y_fp;
+	int32_t  dx_fp;
+	int32_t  dy_fp;
+	uint8_t  keys_lr;
+	uint32_t client_time_ms;
+} LanMsgLobbyPose;
+
 /* --- Payload encoders/decoders ------------------------------------------ */
 
 size_t lan_enc_session_advert(uint8_t *out, size_t cap,
@@ -124,11 +159,13 @@ size_t lan_enc_session_advert(uint8_t *out, size_t cap,
 size_t lan_enc_hello(uint8_t *out, size_t cap, const LanMsgHello *m);
 size_t lan_enc_goodbye(uint8_t *out, size_t cap, const LanMsgGoodbye *m);
 size_t lan_enc_welcome(uint8_t *out, size_t cap, const LanMsgWelcome *m);
+size_t lan_enc_lobby_pose(uint8_t *out, size_t cap, const LanMsgLobbyPose *m);
 
 bool lan_dec_session_advert(const uint8_t *buf, size_t len,
 		LanMsgSessionAdvert *m);
 bool lan_dec_hello(const uint8_t *buf, size_t len, LanMsgHello *m);
 bool lan_dec_goodbye(const uint8_t *buf, size_t len, LanMsgGoodbye *m);
 bool lan_dec_welcome(const uint8_t *buf, size_t len, LanMsgWelcome *m);
+bool lan_dec_lobby_pose(const uint8_t *buf, size_t len, LanMsgLobbyPose *m);
 
 #endif /* ICYTOWER_LAN_MSG_H */

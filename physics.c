@@ -50,6 +50,17 @@ void init_state(IT_STATE *its, int rejump, unsigned int seed)
 	seed_state(its, seed);
 }
 
+int play_lobby_frame(IT_STATE *its, int keys)
+{
+	int prev_x = FTOI(its->x);
+	int prev_y = FTOI(its->y);
+
+	handle_keys(its, keys & ~KEY_JUMP);
+	handle_pos(its);
+	handle_collision(its, prev_x, prev_y);
+	return 1;
+}
+
 int play_frame(IT_STATE *its, int keys)
 {
 	int prev_x, prev_y;

@@ -42,6 +42,12 @@ void init_empty_state(IT_STATE *its, int rejump);
 void seed_state(IT_STATE *its, unsigned int seed);
 void init_state(IT_STATE *its, int rejump, unsigned int seed);
 int play_frame(IT_STATE *its, int keys);
+/*
+ * Lobby physics: horizontal movement and ground collision only, no scroll, no
+ * new floors, no combo/score updates. Jump key is forced off. Always returns
+ * non-zero (the lobby avatar cannot fail).
+ */
+int play_lobby_frame(IT_STATE *its, int keys);
 void handle_keys(IT_STATE *its, int keys);
 int jump(IT_STATE *its);
 void handle_pos(IT_STATE *its);

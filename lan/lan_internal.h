@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LAN_SPEC_VERSION            7u
+#define LAN_SPEC_VERSION            9u
 
 #define LAN_DEFAULT_PORT            51812u /* discovery + legacy default */
 #define LAN_MULTICAST_GROUP         "239.43.137.251"
@@ -45,7 +45,8 @@ typedef enum {
 	LAN_MSG_SESSION_ADVERT      = 0x00,
 	LAN_MSG_HELLO               = 0x01,
 	LAN_MSG_GOODBYE             = 0x02,
-	LAN_MSG_WELCOME             = 0x03
+	LAN_MSG_WELCOME             = 0x03,
+	LAN_MSG_LOBBY_POSE          = 0x04
 } LanMsgType;
 
 typedef enum {
