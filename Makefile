@@ -81,15 +81,15 @@ lan-probe:
 ifeq ($(ICYTOWER_LAN),1)
 LAN_TEST_DIR := lan/tests/build
 
-probe-test: $(LAN_TEST_DIR)/lan_loopback_connect $(LAN_TEST_DIR)/lan_lobby_pose_roundtrip
+probe-test: $(LAN_TEST_DIR)/lan_loopback_connect $(LAN_TEST_DIR)/lan_pose_roundtrip
 	$(LAN_TEST_DIR)/lan_loopback_connect
-	$(LAN_TEST_DIR)/lan_lobby_pose_roundtrip
+	$(LAN_TEST_DIR)/lan_pose_roundtrip
 
 $(LAN_TEST_DIR)/lan_loopback_connect: lan/tests/lan_loopback_connect.c lan/lan_msg.c lan/lan_net.c | $(LAN_TEST_DIR)
 	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_loopback_connect.c lan/lan_msg.c lan/lan_net.c
 
-$(LAN_TEST_DIR)/lan_lobby_pose_roundtrip: lan/tests/lan_lobby_pose_roundtrip.c lan/lan_msg.c | $(LAN_TEST_DIR)
-	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_lobby_pose_roundtrip.c lan/lan_msg.c
+$(LAN_TEST_DIR)/lan_pose_roundtrip: lan/tests/lan_pose_roundtrip.c lan/lan_msg.c | $(LAN_TEST_DIR)
+	$(CC) -Wall -O2 -std=c99 -I. -Ilan -o $@ lan/tests/lan_pose_roundtrip.c lan/lan_msg.c
 
 $(LAN_TEST_DIR):
 	mkdir -p $@

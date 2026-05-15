@@ -1,7 +1,7 @@
 /*
- * Standalone roundtrip test for LAN_MSG_LOBBY_POSE: encode payload, wrap in
+ * Standalone roundtrip test for LAN_MSG_POSE: encode payload, wrap in
  * an ITW1 frame, decode the frame back, decode the payload, and verify every
- * field. Also asserts that LAN_SPEC_VERSION matches what the lobby pose path
+ * field. Also asserts that LAN_SPEC_VERSION matches what the pose path
  * was bumped to 9 when client_time_ms was added.
  */
 #include <stdio.h>
@@ -12,13 +12,13 @@
 
 static int fail(const char *what)
 {
-	fprintf(stderr, "[lan_lobby_pose_roundtrip] FAIL: %s\n", what);
+	fprintf(stderr, "[lan_pose_roundtrip] FAIL: %s\n", what);
 	return 1;
 }
 
 int main(void)
 {
-	LanMsgLobbyPose tx, rx;
+	LanMsgPose tx, rx;
 	uint8_t py[64];
 	uint8_t fr[LAN_FRAME_HEADER_LEN + 64 + LAN_FRAME_CRC_LEN];
 	size_t pl_tx, pl_rx, fn;
@@ -27,7 +27,7 @@ int main(void)
 	int i;
 
 	if (LAN_SPEC_VERSION < 9u)
-		return fail("LAN_SPEC_VERSION older than LOBBY_POSE client_time_ms");
+		return fail("LAN_SPEC_VERSION older than POSE client_time_ms");
 
 	memset(&tx, 0, sizeof tx);
 	tx.seq          = 0xdeadbeefu;
@@ -42,23 +42,23 @@ int main(void)
 	tx.keys_lr = LAN_POSE_KEY_LEFT_BIT | LAN_POSE_KEY_RIGHT_BIT;
 	tx.client_time_ms = 0x12345678u;
 
-	pl_tx = lan_enc_lobby_pose(py, sizeof py, &tx);
+	pl_tx = lan_enc_pose(py, sizeof py, &tx);
 	if (!pl_tx)
-		return fail("lan_enc_lobby_pose returned 0");
+		return fail("lan_enc_pose returned 0");
 
-	fn = lan_frame_encode(fr, sizeof fr, LAN_MSG_LOBBY_POSE, py, pl_tx);
+	fn = lan_frame_encode(fr, sizeof fr, LAN_MSG_POSE, py, pl_tx);
 	if (!fn)
 		return fail("lan_frame_encode returned 0");
 
 	if (!lan_frame_decode(fr, fn, &t, &pyp, &pl_rx))
 		return fail("lan_frame_decode rejected the frame (CRC?)");
-	if (t != LAN_MSG_LOBBY_POSE)
+	if (t != LAN_MSG_POSE)
 		return fail("frame type mismatch on decode");
 	if (pl_rx != pl_tx)
 		return fail("payload length mismatch on decode");
 
-	if (!lan_dec_lobby_pose(pyp, pl_rx, &rx))
-		return fail("lan_dec_lobby_pose rejected payload");
+	if (!lan_dec_pose(pyp, pl_rx, &rx))
+		return fail("lan_dec_pose rejected payload");
 
 	if (rx.seq != tx.seq)               return fail("seq mismatch");
 	if (rx.room_id != tx.room_id)       return fail("room_id mismatch");
@@ -74,6 +74,6 @@ int main(void)
 	if (rx.client_time_ms != tx.client_time_ms)
 		return fail("client_time_ms mismatch");
 
-	puts("[lan_lobby_pose_roundtrip] PASS (LOBBY_POSE encode/decode/CRC)");
+	puts("[lan_pose_roundtrip] PASS (POSE encode/decode/CRC)");
 	return 0;
 }

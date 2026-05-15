@@ -38,7 +38,6 @@
 
 #define ADV_CAP      24
 #define STALE_MS     6200ull
-#define LAN_LOBBY_POSE_PERIOD_MS 50u
 
 typedef struct {
 	bool        ok;
@@ -646,17 +645,17 @@ static bool tx_welcome(LanAddr to)
 	return z && tx_raw(X.gfd, LAN_MSG_WELCOME, py, z, to);
 }
 
-static bool tx_lobby_pose_one(LanAddr to, const LanMsgLobbyPose *m)
+static bool tx_pose_one(LanAddr to, const LanMsgPose *m)
 {
 	uint8_t py[64];
-	size_t z = lan_enc_lobby_pose(py, sizeof py, m);
+	size_t z = lan_enc_pose(py, sizeof py, m);
 
-	return z && tx_raw(X.gfd, LAN_MSG_LOBBY_POSE, py, z, to);
+	return z && tx_raw(X.gfd, LAN_MSG_POSE, py, z, to);
 }
 
-static void tx_lobby_pose_mesh(uint64_t now)
+static void tx_pose_mesh(uint64_t now)
 {
-	LanMsgLobbyPose m;
+	LanMsgPose m;
 	int local_keys;
 	int i;
 
@@ -683,11 +682,11 @@ static void tx_lobby_pose_mesh(uint64_t now)
 
 	for (i = 0; i < LAN_MAX_PEERS; ++i) {
 		if (X.rw[i].ok && !X.rw[i].loc)
-			(void)tx_lobby_pose_one(X.rw[i].ua, &m);
+			(void)tx_pose_one(X.rw[i].ua, &m);
 	}
 }
 
-static void pose_apply(const LanMsgLobbyPose *m, uint64_t now)
+static void pose_apply(const LanMsgPose *m, uint64_t now)
 {
 	int i, slot = -1, free_slot = -1;
 	double scale = (double)LAN_POSE_FIXED_SCALE;
@@ -949,10 +948,10 @@ static void rx_game(uint64_t now)
 			roster_remove(&g.uuid);
 			continue;
 		}
-		if (t == LAN_MSG_LOBBY_POSE) {
-			LanMsgLobbyPose p;
+		if (t == LAN_MSG_POSE) {
+			LanMsgPose p;
 
-			if (!lan_dec_lobby_pose(py, pl, &p))
+			if (!lan_dec_pose(py, pl, &p))
 				continue;
 			if (p.spec_version != LAN_SPEC_VERSION
 					|| p.room_id != X.room_id)
@@ -1107,10 +1106,10 @@ void lan_party_tick(void)
 					|| cur_lr != X.last_tx_keys_lr;
 
 			if (keys_edge || now >= X.wpose) {
-				tx_lobby_pose_mesh(now);
+				tx_pose_mesh(now);
 				X.last_tx_keys_lr = cur_lr;
 				X.last_tx_keys_valid = true;
-				X.wpose = now + LAN_LOBBY_POSE_PERIOD_MS;
+				X.wpose = now + LAN_POSE_PERIOD_MS;
 			}
 		}
 	}

@@ -30,6 +30,8 @@
 
 #define LAN_ADVERT_PERIOD_MS        900u
 #define LAN_HELLO_GOSSIP_MS        280u
+/* Default POSE send spacing (lobby roam); gameplay may use another cadence. */
+#define LAN_POSE_PERIOD_MS         50u
 /* Evict lobby peers absent this many gossip periods (~LAN_HELLO_GOSSIP_MS each). */
 #define LAN_PRESENCE_MISS_CAP       8u
 
@@ -46,7 +48,7 @@ typedef enum {
 	LAN_MSG_HELLO               = 0x01,
 	LAN_MSG_GOODBYE             = 0x02,
 	LAN_MSG_WELCOME             = 0x03,
-	LAN_MSG_LOBBY_POSE          = 0x04
+	LAN_MSG_POSE                = 0x04
 } LanMsgType;
 
 typedef enum {

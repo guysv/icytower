@@ -319,7 +319,7 @@ bool lan_dec_welcome(const uint8_t *buf, size_t len, LanMsgWelcome *m)
 	return ok && p == end;
 }
 
-size_t lan_enc_lobby_pose(uint8_t *out, size_t cap, const LanMsgLobbyPose *m)
+size_t lan_enc_pose(uint8_t *out, size_t cap, const LanMsgPose *m)
 {
 	uint8_t *p = out;
 
@@ -338,7 +338,7 @@ size_t lan_enc_lobby_pose(uint8_t *out, size_t cap, const LanMsgLobbyPose *m)
 	return (size_t)(p - out);
 }
 
-bool lan_dec_lobby_pose(const uint8_t *buf, size_t len, LanMsgLobbyPose *m)
+bool lan_dec_pose(const uint8_t *buf, size_t len, LanMsgPose *m)
 {
 	bool ok = true;
 	const uint8_t *p = buf, *end = buf + len;

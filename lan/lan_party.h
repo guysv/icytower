@@ -19,7 +19,7 @@ void lan_party_key_down(int keycode);
 void lan_party_key_up(int keycode);
 
 /*
- * Snapshot of a remote lobby avatar received via LAN_MSG_LOBBY_POSE. Kept in
+ * Snapshot of a remote player's avatar received via LAN_MSG_POSE. Kept in
  * world-space doubles so the renderer matches the local IT_STATE units.
  * anim_frame is advanced locally (not from the wire) so each peer's animation
  * cycles independently; on the wire we only carry kinematics + held keys.
