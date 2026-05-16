@@ -7,6 +7,12 @@ extern IT_STATE it_state;
 void initialize_game(void);
 void game_reset_for_lobby_preview(void);
 /*
+ * Used after play_begin_match_keep_pose: reset walk animation + combo trail for
+ * a fresh ladder match without clearing inputs (keyboard holds do not replay
+ * Allegro KEY_DOWN until release).
+ */
+void game_reset_match_visual_only(void);
+/*
  * Lobby physics + animation tick for the local avatar. Driven from
  * lan_party_tick at the same 50 Hz cadence as PLAYING. Jump is suppressed and
  * scoring/scroll are skipped; the avatar roams floor 0 only.

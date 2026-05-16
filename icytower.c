@@ -111,7 +111,7 @@ void start_game_with_seed(uint32_t level_seed)
 	sfx_bgm_stop_menu();
 	sfx_bgm_play_character(character_index);
 	play_begin_match_keep_pose(&it_state, level_seed);
-	game_reset_for_lobby_preview();
+	game_reset_match_visual_only();
 	draw_game();
 	sfx_play_sample(characters[character_index].sfx.greeting,
 			volume_sfx / 10.0f, ALLEGRO_PLAYMODE_ONCE);

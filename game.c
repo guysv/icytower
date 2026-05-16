@@ -44,12 +44,17 @@ void initialize_game(void) {
 	combo_trail_init();
 }
 
-void game_reset_for_lobby_preview(void)
+void game_reset_match_visual_only(void)
 {
-	keys = 0;
 	animation = ANIMATION_IDLE;
 	animation_frame = 0;
 	combo_trail_init();
+}
+
+void game_reset_for_lobby_preview(void)
+{
+	keys = 0;
+	game_reset_match_visual_only();
 }
 
 int game_current_keys(void)

@@ -1332,8 +1332,8 @@ static void steady_completion_maybe(uint64_t now)
 	steady_state_clear();
 	X.ph = LAN_PARTY_PHASE_GAME;
 	game_state = PLAYING;
-	X.jump_prev_down = false;
 	start_game_with_seed(X.level_seed);
+	X.jump_prev_down = (game_current_keys() & KEY_JUMP) != 0;
 }
 
 static void rx_disc(uint64_t now)
