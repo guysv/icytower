@@ -5,6 +5,12 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      enable_lan:
+        description: "Compile with LAN multiplayer (+ Bonjour/mDNS on macOS)"
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       - "v*"
@@ -31,9 +37,15 @@ jobs:
         run: brew install allegro pkg-config dylibbundler
 
       - name: Build icytower (Homebrew Allegro via pkg-config)
+        env:
+          DISPATCH_ENABLE_LAN: ${{ github.event.inputs.enable_lan || '' }}
         run: |
           export PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig"
-          make USE_ALLEGRO_PKG_CONFIG=1 LDFLAGS=-Wl,-headerpad_max_install_names -j "$(sysctl -n hw.activecpu)"
+          EXTRA_MAKE=()
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_ENABLE_LAN}" == "true" ]]; then
+            EXTRA_MAKE=(ICYTOWER_LAN=1 ICYTOWER_MDNS=1)
+          fi
+          make USE_ALLEGRO_PKG_CONFIG=1 LDFLAGS=-Wl,-headerpad_max_install_names "${EXTRA_MAKE[@]}" -j "$(sysctl -n hw.activecpu)"
 
       - name: Create app bundle + DMG
         env:
