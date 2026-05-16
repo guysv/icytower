@@ -292,12 +292,22 @@ int main() {
 #endif
 				break;
 #ifdef ICYTOWER_LAN
-			case PAUSE:
 			case ESCAPE:
+				if (lan_party_is_network_game()) {
+					lan_party_tick();
+					if (!paused || lan_party_is_network_game())
+						do_tick();
+				}
+				break;
+			case PAUSE:
 				if (lan_party_is_network_game())
 					lan_party_tick();
 				break;
 			case GAMEOVER:
+				if (lan_party_is_network_game())
+					lan_party_tick();
+				break;
+			case ENTER_INITIALS:
 				if (lan_party_is_network_game())
 					lan_party_tick();
 				break;
@@ -389,6 +399,12 @@ int main() {
 				if (event.keyboard.keycode == ALLEGRO_KEY_ESCAPE) {
 					sfx_play_sample(sample_tryagain, volume_sfx / 10.0f,
 							ALLEGRO_PLAYMODE_ONCE);
+#ifdef ICYTOWER_LAN
+					if (lan_party_is_network_game()) {
+						lan_party_leave_room_to_browse();
+						break;
+					}
+#endif
 					game_state = TITLE;
 					main_menu();
 				} else {

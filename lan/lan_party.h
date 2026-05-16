@@ -12,6 +12,7 @@ void lan_party_shutdown_all(void);
 bool lan_party_busy(void);
 bool lan_party_is_network_game(void);
 void lan_party_enter_browse(void);
+void lan_party_leave_room_to_browse(void);
 
 void lan_party_tick(void);
 void lan_party_draw(void);

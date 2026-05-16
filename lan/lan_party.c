@@ -75,6 +75,8 @@ typedef struct {
 	uint32_t last_jump_rx_seq;
 	bool     have_die_rx_seq;
 	uint32_t last_die_rx_seq;
+	bool     have_pkt_src;
+	LanAddr  pkt_src;
 	IT_STATE it;
 } LobbyRemoteSlot;
 
@@ -191,12 +193,13 @@ static void lan_party_puts_ts(const char *msg)
 
 static bool lan_peer_play_frame_mode(void)
 {
-	return X.ph == LAN_PARTY_PHASE_GAME && game_state == PLAYING;
+	return X.ph == LAN_PARTY_PHASE_GAME
+		&& (game_state == PLAYING || game_state == ESCAPE);
 }
 
 static bool lan_party_should_tx_pose_playing(void)
 {
-	return game_state == PLAYING;
+	return game_state == PLAYING || game_state == ESCAPE;
 }
 
 static uint16_t e16(const char *ev, uint16_t def)
@@ -914,7 +917,7 @@ static void tx_pose_mesh(uint64_t now)
 	}
 }
 
-static void pose_apply(const LanMsgPose *m, uint64_t now)
+static void pose_apply(const LanMsgPose *m, uint64_t now, LanAddr fr)
 {
 	int i, slot = -1, free_slot = -1;
 	double scale = (double)LAN_POSE_FIXED_SCALE;
@@ -954,6 +957,8 @@ static void pose_apply(const LanMsgPose *m, uint64_t now)
 
 	X.pose[slot].last_seq = m->seq;
 	X.pose[slot].have_seq = true;
+	X.pose[slot].have_pkt_src = true;
+	X.pose[slot].pkt_src = fr;
 
 	if (newborn)
 		puppet_init_fresh(&X.pose[slot]);
@@ -1021,9 +1026,16 @@ static void puppets_tick_all(void)
 		if (!X.pose[i].ok)
 			continue;
 		if (X.pose[i].ghost) {
+			double view_bot;
 			play_puppet_ghost_frame(&X.pose[i].it);
-			if (X.pose[i].it.y
-					> (double)(ICYTOWER_LOGICAL_H + 96))
+			/*
+			 * Match draw_game remotes: viewport y so we only drop the slot after
+			 * the ghost clears the bottom of the *local* screen (purge was
+			 * comparing tower world_y to LOGICAL_H, which vanished mid-air).
+			 */
+			view_bot = X.pose[i].it.y - (double)X.pose[i].it.screen_y
+					+ (double)it_state.screen_y;
+			if (view_bot > (double)(ICYTOWER_LOGICAL_H + 96))
 				memset(&X.pose[i], 0, sizeof X.pose[i]);
 			else
 				X.pose[i].anim_frame++;
@@ -1042,6 +1054,19 @@ static void puppets_tick_all(void)
 	}
 }
 
+static bool roster_has_remote_uuid(const LanUuid *id)
+{
+	int k;
+
+	for (k = 0; k < LAN_MAX_PEERS; ++k) {
+		if (!X.rw[k].ok || X.rw[k].loc)
+			continue;
+		if (memcmp(X.rw[k].id.b, id->b, LAN_UUID_BYTES) == 0)
+			return true;
+	}
+	return false;
+}
+
 static void goodbye_mesh(uint64_t room_id)
 {
 	int i;
@@ -1051,6 +1076,18 @@ static void goodbye_mesh(uint64_t room_id)
 	for (i = 0; i < LAN_MAX_PEERS; ++i) {
 		if (X.rw[i].ok && !X.rw[i].loc)
 			(void)tx_goodbye(room_id, X.rw[i].ua);
+	}
+
+	/*
+	 * Fall back to the source address of recent POSE packets when a peer is
+	 * simulating correctly but roster/WELCOME bookkeeping missed their row.
+	 */
+	for (i = 0; i < LAN_MAX_PEERS; ++i) {
+		if (!X.pose[i].ok || !X.pose[i].have_seq || !X.pose[i].have_pkt_src)
+			continue;
+		if (roster_has_remote_uuid(&X.pose[i].id))
+			continue;
+		(void)tx_goodbye(room_id, X.pose[i].pkt_src);
 	}
 }
 
@@ -1788,7 +1825,7 @@ static void rx_game(uint64_t now)
 			if (memcmp(p.sender.b, X.me.b, LAN_UUID_BYTES) == 0)
 				continue;
 			roster_refresh_hb(&p.sender, now);
-			pose_apply(&p, now);
+			pose_apply(&p, now, fr);
 			continue;
 		}
 		if (t == LAN_MSG_JUMP) {
@@ -1932,6 +1969,10 @@ void lan_party_init(void)
 
 void lan_party_shutdown_all(void)
 {
+	if (X.net && X.room_id != 0
+			&& (X.ph == LAN_PARTY_PHASE_LOBBY
+				|| X.ph == LAN_PARTY_PHASE_GAME))
+		goodbye_mesh(X.room_id);
 	lan_mdns_browse_stop();
 	lan_mdns_unregister();
 	X.mdns_registered = false;
@@ -1955,6 +1996,30 @@ bool lan_party_busy(void)
 bool lan_party_is_network_game(void)
 {
 	return X.ph == LAN_PARTY_PHASE_GAME;
+}
+
+void lan_party_leave_room_to_browse(void)
+{
+	uint64_t rid;
+
+	if (!X.net)
+		return;
+	if (X.ph != LAN_PARTY_PHASE_LOBBY && X.ph != LAN_PARTY_PHASE_GAME)
+		return;
+	rid = X.room_id;
+	goodbye_mesh(rid);
+	lan_mdns_unregister();
+	X.mdns_registered = false;
+	X.ph = LAN_PARTY_PHASE_BROWSE;
+	X.room_id = 0;
+	X.level_seed = 0;
+	X.lobby_level_seeded = false;
+	X.jleft = 0;
+	memset(X.adv, 0, sizeof X.adv);
+	X.cursor = 0;
+	ready_party_reset();
+	game_state = LAN_PARTY_BROWSE;
+	(void)lan_mdns_browse_start(NULL, mdns_apply);
 }
 
 void lan_party_enter_browse(void)
@@ -1986,11 +2051,17 @@ void lan_party_tick(void)
 	rx_disc(now);
 
 	if (X.ph == LAN_PARTY_PHASE_GAME) {
-		bool keep_phase = (game_state == PLAYING || game_state == PAUSE
-				|| game_state == ESCAPE
-				|| (game_state == GAMEOVER && X.die_pending));
+		/*
+		 * A loss (GAMEOVER) is not leaving the match: GOODBYE is only sent from
+		 * explicit leave/browse/shutdown (see goodbye_mesh callers). Older logic
+		 * tied phase lifetime to DIE_ACK handshakes which looked like a quit.
+		 */
+		bool keep_phase = game_state == PLAYING || game_state == PAUSE
+				|| game_state == ESCAPE || game_state == GAMEOVER
+				|| game_state == ENTER_INITIALS;
 
 		if (!keep_phase) {
+			goodbye_mesh(X.room_id);
 			X.ph = LAN_PARTY_PHASE_NONE;
 			steady_state_clear();
 			die_party_reset();
@@ -2171,23 +2242,8 @@ void lan_party_key_down(int kc)
 	}
 
 	if (X.ph == LAN_PARTY_PHASE_LOBBY) {
-		if (kc == ALLEGRO_KEY_ESCAPE) {
-			uint64_t rid = X.room_id;
-
-			goodbye_mesh(rid);
-			lan_mdns_unregister();
-			X.mdns_registered = false;
-			X.ph = LAN_PARTY_PHASE_BROWSE;
-			X.room_id = 0;
-			X.level_seed = 0;
-			X.lobby_level_seeded = false;
-			X.jleft = 0;
-			memset(X.adv, 0, sizeof X.adv);
-			X.cursor = 0;
-			ready_party_reset();
-			game_state = LAN_PARTY_BROWSE;
-			(void)lan_mdns_browse_start(NULL, mdns_apply);
-		}
+		if (kc == ALLEGRO_KEY_ESCAPE)
+			lan_party_leave_room_to_browse();
 	}
 }
 

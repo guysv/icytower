@@ -598,7 +598,8 @@ void draw_game(void) {
 #ifdef ICYTOWER_LAN
 	if (game_state == LAN_PARTY_LOBBY
 			|| (lan_party_is_network_game()
-				&& (game_state == PLAYING || game_state == GAMEOVER))) {
+				&& (game_state == PLAYING || game_state == GAMEOVER
+					|| game_state == ESCAPE))) {
 		const LanLobbyRemote *rem = NULL;
 		size_t n = lan_party_lobby_remotes(&rem);
 		size_t i;
@@ -607,7 +608,7 @@ void draw_game(void) {
 			double view_y = rem[i].y - (double)rem[i].screen_y
 					+ (double)it_state.screen_y;
 
-			if (game_state == PLAYING)
+			if (game_state == PLAYING || game_state == ESCAPE)
 				draw_network_puppet(rem[i].x, view_y, rem[i].dx,
 						rem[i].anim_frame,
 						rem[i].key_left, rem[i].key_right,
@@ -645,6 +646,17 @@ void draw_pause(void) {
 void draw_escape(void) {
 	draw_game();
 	draw_grid();
+#ifdef ICYTOWER_LAN
+	if (lan_party_is_network_game()) {
+		al_draw_text(font_color, al_map_rgb(255, 255, 255),
+				190, 150, 0, "GAME PAUSED");
+		al_draw_text(font_mono, al_map_rgb(255, 255, 255),
+				132, 200, 0, "PRESS ANY KEY TO CONTINUE");
+		al_draw_text(font_mono, al_map_rgb(255, 255, 255),
+				72, 240, 0, "PRESS ESC AGAIN TO LEAVE THE ROOM");
+		return;
+	}
+#endif
 	al_draw_text(font_color, al_map_rgb(255, 255, 255),
 			23, 160, 0, "DO YOU REALLY WANT TO EXIT?");
 	al_draw_text(font_mono, al_map_rgb(255, 255, 255),
